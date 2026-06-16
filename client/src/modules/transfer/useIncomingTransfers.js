@@ -4,6 +4,7 @@ export function useIncomingTransfers(onShareFile) {
   const activeRef = useRef(null);
   const pendingRef = useRef(null);
   const partialTransfersRef = useRef(new Map());
+  const preCreatedSinksRef = useRef(new Map());
   const [incoming, setIncoming] = useState(null);
   const [downloads, setDownloads] = useState([]);
   const lastUpdateRef = useRef(0);
@@ -101,7 +102,10 @@ export function useIncomingTransfers(onShareFile) {
       active = existing;
     } else {
       let sink;
-      if (directoryHandleRef.current) {
+      if (preCreatedSinksRef.current.has(pending.meta.id)) {
+        sink = preCreatedSinksRef.current.get(pending.meta.id);
+        preCreatedSinksRef.current.delete(pending.meta.id);
+      } else if (directoryHandleRef.current) {
         sink = await createDirectorySink(directoryHandleRef.current, pending.meta);
       } else if (canStreamToDisk()) {
         sink = await createDiskSink(pending.meta);
@@ -157,7 +161,8 @@ export function useIncomingTransfers(onShareFile) {
             autoAcceptRef.current = false;
           }
 
-          if (autoAcceptRef.current) {
+          // Auto-accept if we have pre-created a sink for this requested file or are in Save All directory mode
+          if (autoAcceptRef.current || preCreatedSinksRef.current.has(message.id)) {
             performAccept(pending);
             return;
           }
@@ -186,6 +191,10 @@ export function useIncomingTransfers(onShareFile) {
           partialTransfersRef.current.delete(message.id);
           if (pendingRef.current?.meta.id === message.id) {
             pendingRef.current = null;
+          }
+          if (preCreatedSinksRef.current.has(message.id)) {
+            preCreatedSinksRef.current.get(message.id).abort?.();
+            preCreatedSinksRef.current.delete(message.id);
           }
           setIncoming(null);
         }
@@ -220,6 +229,43 @@ export function useIncomingTransfers(onShareFile) {
     },
     [failActiveTransfer, finishActiveTransfer, performAccept],
   );
+
+  const preCreateSink = useCallback(async (fileId, meta) => {
+    let sink;
+    if (canStreamToDisk()) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          id: "share-file-downloads",
+          suggestedName: meta.name,
+          startIn: "downloads",
+        });
+        const writable = await handle.createWritable();
+        sink = {
+          storageMode: "disk",
+          async write(chunk, position) {
+            await writable.write({ type: "write", position, data: chunk });
+          },
+          async close() {
+            await writable.close();
+            return { savedToDisk: true };
+          },
+          async abort() {
+            if (typeof writable.abort === "function") {
+              await writable.abort();
+            }
+          },
+        };
+      } catch (err) {
+        // User cancelled or aborted the file save dialog
+        return false;
+      }
+    } else {
+      sink = createMemorySink(meta);
+    }
+
+    preCreatedSinksRef.current.set(fileId, sink);
+    return true;
+  }, []);
 
   const acceptIncoming = useCallback(async (autoAccept = false) => {
     if (autoAccept) {
@@ -257,6 +303,11 @@ export function useIncomingTransfers(onShareFile) {
       partialTransfersRef.current.delete(active.id);
     }
 
+    if (id && preCreatedSinksRef.current.has(id)) {
+      preCreatedSinksRef.current.get(id).abort?.();
+      preCreatedSinksRef.current.delete(id);
+    }
+
     pendingRef.current = null;
     activeRef.current = null;
     setIncoming(null);
@@ -283,6 +334,7 @@ export function useIncomingTransfers(onShareFile) {
     incoming,
     downloads,
     handleDataMessage,
+    preCreateSink,
     acceptIncoming,
     rejectIncoming,
     clearDownload,

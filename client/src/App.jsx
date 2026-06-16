@@ -38,6 +38,7 @@ export function App() {
     incoming,
     downloads,
     handleDataMessage,
+    preCreateSink,
     acceptIncoming,
     rejectIncoming,
     clearDownload,
@@ -64,6 +65,21 @@ export function App() {
     onDataMessage: handleDataMessage,
     onEvent: handlePeerEvent,
   });
+
+  const handleRequestFile = useCallback(
+    async (fileId, ownerId, meta) => {
+      setPeerError("");
+      const ok = await preCreateSink(fileId, meta);
+      if (ok) {
+        try {
+          requestFile(fileId, ownerId);
+        } catch (err) {
+          setPeerError(err.message);
+        }
+      }
+    },
+    [preCreateSink, requestFile]
+  );
 
   useEffect(() => {
     if (!socket || !signalingConnected) {
@@ -146,7 +162,7 @@ export function App() {
             incoming={incoming}
             downloads={downloads}
             networkFiles={networkFiles}
-            onRequestFile={requestFile}
+            onRequestFile={handleRequestFile}
             onShareFile={shareFile}
             onAcceptIncoming={acceptIncoming}
             onRejectIncoming={rejectIncoming}

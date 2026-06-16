@@ -428,7 +428,7 @@ export function FileTransferPanel({
                 <button
                   className="button"
                   type="button"
-                  onClick={() => onRequestFile?.(file.id, file.ownerId)}
+                  onClick={() => onRequestFile?.(file.id, file.ownerId, file)}
                 >
                   <Download size={17} aria-hidden="true" />
                   Download
