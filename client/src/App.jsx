@@ -152,6 +152,7 @@ export function App() {
             onRejectIncoming={rejectIncoming}
             onClearDownload={clearDownload}
             onClearAllDownloads={clearAllDownloads}
+            availablePeers={availablePeers}
           />
         </div>
       </section>

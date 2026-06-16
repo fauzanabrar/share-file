@@ -19,6 +19,7 @@ export function FileTransferPanel({
   onRejectIncoming,
   onClearDownload,
   onClearAllDownloads,
+  availablePeers,
 }) {
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
@@ -277,6 +278,21 @@ export function FileTransferPanel({
         </span>
       </div>
 
+      {/* Inline List of LAN Devices & Connection States */}
+      {availablePeers && availablePeers.length > 0 && (
+        <div className="devices-list-inline">
+          {availablePeers.map((p) => {
+            const state = channelStates[p.id] || "closed";
+            return (
+              <span key={p.id} className={`device-badge ${state}`} title={`Connection State: ${state}`}>
+                <span className="device-badge-dot" />
+                {p.displayName}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* Pending (interrupted) transfers */}
       {pendingTransfers.length > 0 && !sending ? (
         <div className="pending-stack">
@@ -487,9 +503,17 @@ export function FileTransferPanel({
 function IncomingRequest({ incoming, accepting, onAccept, onReject }) {
   const hasMultiple = incoming.meta.queueSize > 1;
   const isDisk = incoming.storageMode === "disk";
+  const showMemoryWarning = !isDisk && incoming.meta.size > 150 * 1024 * 1024;
 
   return (
     <div className="transfer-card">
+      {showMemoryWarning && (
+        <div className="memory-warning-banner" role="alert">
+          <strong>Memory Warning:</strong> This browser does not support saving files directly to disk. 
+          Downloading this large file ({formatBytes(incoming.meta.size)}) in memory may exhaust system memory and crash the browser tab. 
+          For large files, please use a browser that supports File System Access (e.g. Chrome, Edge, Opera).
+        </div>
+      )}
       <div className="transfer-row">
         <strong>
           {hasMultiple ? `[${(incoming.meta.queueIndex || 0) + 1}/${incoming.meta.queueSize}] ` : ""}

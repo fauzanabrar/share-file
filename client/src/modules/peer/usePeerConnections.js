@@ -11,6 +11,8 @@ export function usePeerConnections({
   onEvent,
 }) {
   const connectionsRef = useRef(new Map());
+  const retryCountsRef = useRef(new Map());
+  const retryingRef = useRef(new Set());
   const [channelStates, setChannelStates] = useState({});
   const [networkFiles, setNetworkFiles] = useState(new Map());
 
@@ -40,6 +42,7 @@ export function usePeerConnections({
 
       nextChannel.onopen = () => {
         setChannelStates((prev) => ({ ...prev, [peerId]: nextChannel.readyState }));
+        retryCountsRef.current.set(peerId, 0); // Reset retry count on successful open
         onEvent?.(`Data channel opened with ${displayName}.`);
 
         // Send catalog immediately upon opening
@@ -120,6 +123,69 @@ export function usePeerConnections({
     [onDataMessage, onEvent, sharedFiles, removePeerFiles]
   );
 
+  const negotiateInitiator = useCallback(
+    async (record, peerId, displayName) => {
+      try {
+        const nextChannel = record.pc.createDataChannel(DATA_CHANNEL_LABEL, { ordered: true });
+        configureChannel(peerId, displayName, nextChannel);
+
+        const offer = await record.pc.createOffer();
+        await record.pc.setLocalDescription(offer);
+
+        socket.emit("signal:send", {
+          targetId: peerId,
+          payload: { type: "offer", description: record.pc.localDescription },
+        });
+        onEvent?.(`Offer sent to ${displayName}.`);
+      } catch (err) {
+        onEvent?.(`Failed to create offer for ${displayName}: ${err.message}`);
+      }
+    },
+    [socket, configureChannel, onEvent]
+  );
+
+  const triggerRetry = useCallback(
+    (peerId, displayName, isInitiator) => {
+      if (retryingRef.current.has(peerId)) {
+        return;
+      }
+      retryingRef.current.add(peerId);
+
+      // Clean up failed connection
+      const record = connectionsRef.current.get(peerId);
+      if (record) {
+        record.channel?.close();
+        record.pc.close();
+        connectionsRef.current.delete(peerId);
+        removePeerFiles(peerId);
+      }
+
+      setChannelStates((prev) => ({ ...prev, [peerId]: "connecting" }));
+
+      const count = retryCountsRef.current.get(peerId) || 0;
+      if (count < 3) {
+        retryCountsRef.current.set(peerId, count + 1);
+        onEvent?.(`Retrying connection with ${displayName} (attempt ${count + 1}/3) in 3 seconds...`);
+        setTimeout(() => {
+          retryingRef.current.delete(peerId);
+          // Check if peer is still online before retrying
+          const isPeerOnline = availablePeers.some((p) => p.id === peerId);
+          if (isPeerOnline) {
+            const newRecord = setupPeerConnection(peerId, displayName, isInitiator);
+            if (isInitiator) {
+              negotiateInitiator(newRecord, peerId, displayName);
+            }
+          }
+        }, 3000);
+      } else {
+        retryingRef.current.delete(peerId);
+        onEvent?.(`WebRTC connection failed after 3 retries with ${displayName}.`);
+        setChannelStates((prev) => ({ ...prev, [peerId]: "failed" }));
+      }
+    },
+    [availablePeers, removePeerFiles, onEvent, negotiateInitiator]
+  );
+
   const setupPeerConnection = useCallback(
     (peerId, displayName, isInitiator) => {
       const pc = new RTCPeerConnection(peerConnectionConfig);
@@ -135,14 +201,22 @@ export function usePeerConnections({
       setChannelStates((prev) => ({ ...prev, [peerId]: "connecting" }));
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "failed") {
-          onEvent?.(`WebRTC connection failed with ${displayName}.`);
+        // Sync states to UI
+        const state = pc.connectionState;
+        setChannelStates((prev) => ({
+          ...prev,
+          [peerId]: state === "connected" && record.channel?.readyState === "open" ? "open" : state,
+        }));
+
+        if (state === "failed" || state === "disconnected") {
+          triggerRetry(peerId, displayName, isInitiator);
         }
       };
 
       pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === "failed") {
-          onEvent?.(`ICE connection failed with ${displayName}.`);
+        const state = pc.iceConnectionState;
+        if (state === "failed") {
+          triggerRetry(peerId, displayName, isInitiator);
         }
       };
 
@@ -170,7 +244,7 @@ export function usePeerConnections({
 
       return record;
     },
-    [socket, configureChannel, onEvent]
+    [socket, configureChannel, triggerRetry]
   );
 
   // Broadcast catalog changes dynamically to all open peers
@@ -201,6 +275,16 @@ export function usePeerConnections({
   // Auto-connect and negotiate WebRTC for all available LAN peers
   useEffect(() => {
     if (!socket || !selfPeer) {
+      // Clean up all active connections if signaling drops offline
+      for (const record of connectionsRef.current.values()) {
+        record.channel?.close();
+        record.pc.close();
+      }
+      connectionsRef.current.clear();
+      setChannelStates({});
+      setNetworkFiles(new Map());
+      retryCountsRef.current.clear();
+      retryingRef.current.clear();
       return;
     }
 
@@ -213,6 +297,7 @@ export function usePeerConnections({
         record.pc.close();
         connectionsRef.current.delete(peerId);
         removePeerFiles(peerId);
+        retryCountsRef.current.delete(peerId);
         setChannelStates((prev) => {
           const next = { ...prev };
           delete next[peerId];
@@ -222,7 +307,7 @@ export function usePeerConnections({
     }
 
     // 2. Setup connections for newly discovered peers
-    availablePeers.forEach(async (peer) => {
+    availablePeers.forEach((peer) => {
       if (connectionsRef.current.has(peer.id)) {
         return;
       }
@@ -232,24 +317,17 @@ export function usePeerConnections({
       const record = setupPeerConnection(peer.id, peer.displayName, isInitiator);
 
       if (isInitiator) {
-        try {
-          const nextChannel = record.pc.createDataChannel(DATA_CHANNEL_LABEL, { ordered: true });
-          configureChannel(peer.id, peer.displayName, nextChannel);
-
-          const offer = await record.pc.createOffer();
-          await record.pc.setLocalDescription(offer);
-
-          socket.emit("signal:send", {
-            targetId: peer.id,
-            payload: { type: "offer", description: record.pc.localDescription },
-          });
-          onEvent?.(`Offer sent to ${peer.displayName}.`);
-        } catch (err) {
-          onEvent?.(`Failed to create offer for ${peer.displayName}: ${err.message}`);
-        }
+        negotiateInitiator(record, peer.id, peer.displayName);
       }
     });
-  }, [socket, selfPeer, availablePeers, setupPeerConnection, configureChannel, removePeerFiles, onEvent]);
+  }, [
+    socket,
+    selfPeer,
+    availablePeers,
+    setupPeerConnection,
+    negotiateInitiator,
+    removePeerFiles,
+  ]);
 
   // Handle incoming signaling messages
   useEffect(() => {
@@ -339,6 +417,8 @@ export function usePeerConnections({
       connectionsRef.current.clear();
       setChannelStates({});
       setNetworkFiles(new Map());
+      retryCountsRef.current.clear();
+      retryingRef.current.clear();
     };
   }, []);
 
