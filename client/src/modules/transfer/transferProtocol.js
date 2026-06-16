@@ -7,7 +7,7 @@ export function createFileId(file) {
 }
 
 // ── Send a file (with background + resume) ──────────────────────────
-export async function sendFile({ channel, file, signal, onProgress }) {
+export async function sendFile({ channel, file, signal, onProgress, queueIndex, queueSize }) {
   if (!channel || channel.readyState !== "open") {
     throw new Error("Data channel is not open.");
   }
@@ -22,6 +22,8 @@ export async function sendFile({ channel, file, signal, onProgress }) {
     size: file.size,
     mimeType: file.type || "application/octet-stream",
     chunkSize: CHUNK_SIZE,
+    queueIndex,
+    queueSize,
   }));
 
   let resumeOffset = 0;

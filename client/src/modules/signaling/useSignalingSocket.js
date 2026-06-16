@@ -58,6 +58,7 @@ export function useSignalingSocket() {
 function createSignalingClient(baseUrl) {
   const listeners = new Map();
   const pendingReplies = new Map();
+  const pendingEvents = new Map();
   const wsUrl = toWebSocketUrl(baseUrl);
   const ws = new WebSocket(wsUrl);
 
@@ -82,7 +83,15 @@ function createSignalingClient(baseUrl) {
   });
 
   function emitLocal(event, payload) {
-    for (const listener of listeners.get(event) || []) {
+    const eventListeners = listeners.get(event);
+    if (!eventListeners?.size) {
+      const queued = pendingEvents.get(event) || [];
+      queued.push(payload);
+      pendingEvents.set(event, queued.slice(-20));
+      return;
+    }
+
+    for (const listener of eventListeners) {
       listener(payload);
     }
   }
@@ -111,6 +120,14 @@ function createSignalingClient(baseUrl) {
       const eventListeners = listeners.get(event) || new Set();
       eventListeners.add(listener);
       listeners.set(event, eventListeners);
+
+      const queued = pendingEvents.get(event);
+      if (queued?.length) {
+        pendingEvents.delete(event);
+        for (const payload of queued) {
+          queueMicrotask(() => listener(payload));
+        }
+      }
     },
     off(event, listener) {
       listeners.get(event)?.delete(listener);
@@ -118,6 +135,7 @@ function createSignalingClient(baseUrl) {
     close() {
       ws.close();
       pendingReplies.clear();
+      pendingEvents.clear();
       listeners.clear();
     },
   };

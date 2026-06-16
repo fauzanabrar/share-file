@@ -15,10 +15,11 @@ export function FileTransferPanel({
   onAcceptIncoming,
   onRejectIncoming,
   onClearDownload,
+  onClearAllDownloads,
 }) {
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [sending, setSending] = useState(null);
   const [error, setError] = useState("");
   const [acceptingIncoming, setAcceptingIncoming] = useState(false);
@@ -33,11 +34,11 @@ export function FileTransferPanel({
 
   // When the user picks a file and we were waiting for resume, start sending.
   useEffect(() => {
-    if (selectedFile && resumeId) {
-      startSendWithFile(selectedFile, resumeId);
+    if (selectedFiles.length > 0 && resumeId) {
+      startSendWithFile(selectedFiles[0], resumeId);
       setResumeId(null);
     }
-  }, [selectedFile, resumeId]);
+  }, [selectedFiles, resumeId]);
 
   const startSendWithFile = async (file, pendingId) => {
     if (!file) {
@@ -46,7 +47,7 @@ export function FileTransferPanel({
 
     if (pendingId && createFileId(file) !== pendingId) {
       setError("Select the same file to resume this transfer.");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setPendingTransfers(getPendingTransferStates());
       return;
     }
@@ -75,7 +76,7 @@ export function FileTransferPanel({
           });
         },
       });
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setPendingTransfers(getPendingTransferStates());
     } catch (sendError) {
       if (sendError.message !== "Transfer cancelled.") {
@@ -88,8 +89,60 @@ export function FileTransferPanel({
     }
   };
 
-  const startSend = () => {
-    startSendWithFile(selectedFile);
+  const startSend = async () => {
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    setError("");
+    const files = [...selectedFiles];
+    setSelectedFiles([]);
+
+    for (let i = 0; i < files.length; i++) {
+      if (channel?.readyState !== "open") {
+        setError("Connection lost. Remaining files were not sent.");
+        break;
+      }
+
+      const file = files[i];
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setSending({
+        name: files.length > 1 ? `[${i + 1}/${files.length}] ${file.name}` : file.name,
+        sentBytes: 0,
+        totalBytes: file.size,
+        speedBytesPerSecond: 0,
+      });
+
+      try {
+        await sendFile({
+          channel,
+          file,
+          signal: controller.signal,
+          queueIndex: i,
+          queueSize: files.length,
+          onProgress: (progress) => {
+            setSending({
+              name: files.length > 1 ? `[${i + 1}/${files.length}] ${file.name}` : file.name,
+              sentBytes: progress.sentBytes,
+              totalBytes: progress.totalBytes,
+              speedBytesPerSecond: progress.speedBytesPerSecond,
+            });
+          },
+        });
+      } catch (sendError) {
+        if (sendError.message !== "Transfer cancelled.") {
+          setError(sendError.message);
+        }
+        break;
+      } finally {
+        abortRef.current = null;
+      }
+    }
+
+    setPendingTransfers(getPendingTransferStates());
+    window.setTimeout(() => setSending(null), 900);
   };
 
   const cancelSend = () => {
@@ -103,13 +156,13 @@ export function FileTransferPanel({
   };
 
   const handleFileChange = (event) => {
-    const file = event.target.files?.[0] || null;
-    if (!file) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (files.length === 0) {
       // User cancelled the file picker — clear resume state.
       setResumeId(null);
       return;
     }
-    setSelectedFile(file);
+    setSelectedFiles(files);
     // Reset so the same file can be picked again.
     event.target.value = "";
   };
@@ -119,12 +172,12 @@ export function FileTransferPanel({
     setPendingTransfers(getPendingTransferStates());
   };
 
-  const acceptIncoming = async () => {
+  const acceptIncoming = async (autoAccept = false) => {
     setAcceptingIncoming(true);
     setError("");
 
     try {
-      await onAcceptIncoming?.();
+      await onAcceptIncoming?.(autoAccept);
     } catch (acceptError) {
       if (acceptError.name !== "AbortError") {
         setError(acceptError.message || "Could not accept incoming transfer.");
@@ -136,6 +189,19 @@ export function FileTransferPanel({
 
   const rejectIncoming = () => {
     onRejectIncoming?.();
+  };
+
+  const downloadAll = () => {
+    downloads.forEach((download) => {
+      if (download.url) {
+        const a = document.createElement("a");
+        a.href = download.url;
+        a.download = download.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    });
   };
 
   return (
@@ -188,6 +254,7 @@ export function FileTransferPanel({
         <input
           ref={fileInputRef}
           type="file"
+          multiple
           disabled={!channelReady || Boolean(sending)}
           onChange={handleFileChange}
         />
@@ -195,7 +262,7 @@ export function FileTransferPanel({
           <button
             className="button"
             type="button"
-            disabled={!channelReady || !selectedFile || Boolean(sending)}
+            disabled={!channelReady || selectedFiles.length === 0 || Boolean(sending)}
             onClick={startSend}
           >
             <Send size={17} aria-hidden="true" />
@@ -211,6 +278,29 @@ export function FileTransferPanel({
             Cancel
           </button>
         </div>
+
+        {selectedFiles.length > 0 && !sending && (
+          <div className="selected-files-list">
+            <div className="selected-files-header">
+              <h3>Files to send ({selectedFiles.length})</h3>
+              <button
+                type="button"
+                className="button-link"
+                onClick={() => setSelectedFiles([])}
+              >
+                Clear all
+              </button>
+            </div>
+            <ul>
+              {selectedFiles.map((file, idx) => (
+                <li key={idx} className="selected-file-item">
+                  <span className="file-name">{file.name}</span>
+                  <span className="file-size">{formatBytes(file.size)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {sending ? (
@@ -246,6 +336,28 @@ export function FileTransferPanel({
 
       {downloads.length > 0 ? (
         <div className="download-stack">
+          <div className="download-stack-header">
+            <h3>Completed Downloads</h3>
+            <div className="button-row">
+              {downloads.some((d) => d.url) && (
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={downloadAll}
+                >
+                  <Download size={17} aria-hidden="true" />
+                  Download All
+                </button>
+              )}
+              <button
+                className="button secondary"
+                type="button"
+                onClick={onClearAllDownloads}
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
           {downloads.map((download) => (
             <div className="download-card" key={download.id}>
               <div className="download-row">
@@ -284,10 +396,16 @@ export function FileTransferPanel({
 }
 
 function IncomingRequest({ incoming, accepting, onAccept, onReject }) {
+  const hasMultiple = incoming.meta.queueSize > 1;
+  const isDisk = incoming.storageMode === "disk";
+
   return (
     <div className="transfer-card">
       <div className="transfer-row">
-        <strong>{incoming.meta.name}</strong>
+        <strong>
+          {hasMultiple ? `[${(incoming.meta.queueIndex || 0) + 1}/${incoming.meta.queueSize}] ` : ""}
+          {incoming.meta.name}
+        </strong>
         <span>{formatBytes(incoming.meta.size)}</span>
       </div>
       <div className="button-row">
@@ -295,11 +413,22 @@ function IncomingRequest({ incoming, accepting, onAccept, onReject }) {
           className="button"
           type="button"
           disabled={accepting}
-          onClick={onAccept}
+          onClick={() => onAccept(false)}
         >
           <Download size={17} aria-hidden="true" />
-          {incoming.storageMode === "disk" ? "Save" : "Accept"}
+          {isDisk ? "Save" : "Accept"}
         </button>
+        {hasMultiple && (
+          <button
+            className="button"
+            type="button"
+            disabled={accepting}
+            onClick={() => onAccept(true)}
+          >
+            <Download size={17} aria-hidden="true" />
+            {isDisk ? "Save All" : "Accept All"}
+          </button>
+        )}
         <button
           className="button secondary"
           type="button"

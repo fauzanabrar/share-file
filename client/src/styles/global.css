@@ -30,15 +30,13 @@ button {
 }
 
 .shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 24px;
   min-height: 100vh;
   padding: 28px;
 }
 
-.workspace,
-.rail {
+.workspace {
+  width: min(100%, 1120px);
+  margin: 0 auto;
   min-width: 0;
 }
 
@@ -83,21 +81,15 @@ h2 {
   gap: 18px;
 }
 
-.panel,
-.activity,
-.metric {
+.panel {
   background: #ffffff;
   border: 1px solid #d9e0d7;
   border-radius: 8px;
   box-shadow: 0 10px 30px rgb(28 42 34 / 0.06);
-}
-
-.panel {
   padding: 18px;
 }
 
-.panel-header,
-.activity-header {
+.panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -119,16 +111,10 @@ h2 {
   gap: 12px;
 }
 
-.metric span,
 .download-row span,
 .transfer-row span {
   color: #647268;
   font-size: 0.88rem;
-}
-
-.metric strong {
-  overflow-wrap: anywhere;
-  color: #17201b;
 }
 
 .device-card,
@@ -323,10 +309,89 @@ input[type="file"] {
 .download-stack {
   display: grid;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 28px;
 }
 
-.transfer-card,
+.selected-files-list {
+  margin-top: 20px;
+  padding: 12px;
+  background: #fbfcfa;
+  border: 1px solid #cbd5ca;
+  border-radius: 8px;
+}
+
+.selected-files-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.selected-files-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #17201b;
+  font-weight: 600;
+}
+
+.button-link {
+  background: none;
+  border: none;
+  color: #9e2f22;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+
+.button-link:hover {
+  text-decoration: underline;
+}
+
+.selected-files-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.selected-file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #e4e9e1;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.selected-file-item .file-name {
+  color: #17201b;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70%;
+}
+
+.selected-file-item .file-size {
+  color: #647268;
+  font-size: 0.78rem;
+}
+
+.transfer-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #fbfcfa;
+  border: 1px solid #e4e9e1;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
 .download-card {
   display: grid;
   gap: 10px;
@@ -350,57 +415,9 @@ input[type="file"] {
   color: #65736a;
 }
 
-.activity {
-  margin-top: 18px;
-  padding: 16px;
-}
-
-.activity-header span {
-  color: #647268;
-  font-size: 0.86rem;
-}
-
-.activity ul {
-  display: grid;
-  gap: 8px;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.activity li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-top: 1px solid #eef1ec;
-}
-
-.activity time {
-  flex: 0 0 auto;
-  color: #647268;
-}
-
-.rail {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-}
-
-.metric {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-}
-
 @media (max-width: 980px) {
-  .shell,
   .grid {
     grid-template-columns: 1fr;
-  }
-
-  .rail {
-    grid-row: 2;
   }
 }
 
@@ -461,4 +478,18 @@ input[type="file"] {
   margin: 0;
   color: #7a6a30;
   font-size: 0.82rem;
+}
+
+.download-stack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.download-stack-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #17201b;
+  font-weight: 600;
 }

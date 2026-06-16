@@ -5,6 +5,7 @@ export function PairingCard({
   deviceName,
   peers,
   connectedPeer,
+  channelState,
   connectingPeerId,
   error,
   disabled,
@@ -38,7 +39,7 @@ export function PairingCard({
         <div className="connected-peer">
           <div className="download-row">
             <strong>{connectedPeer.displayName}</strong>
-            <span>Connected</span>
+            <span>{channelState === "open" ? "Connected" : "Connecting"}</span>
           </div>
           <button className="button secondary" type="button" onClick={onDisconnectPeer}>
             <Unplug size={17} aria-hidden="true" />

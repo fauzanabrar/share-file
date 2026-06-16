@@ -1,17 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileUp, Link2, PlugZap, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { PairingCard } from "./modules/pairing/PairingCard.jsx";
 import { usePeerConnection } from "./modules/peer/usePeerConnection.js";
 import { useSignalingSocket } from "./modules/signaling/useSignalingSocket.js";
 import { ConnectionStatus } from "./modules/status/ConnectionStatus.jsx";
 import { FileTransferPanel } from "./modules/transfer/FileTransferPanel.jsx";
 import { useIncomingTransfers } from "./modules/transfer/useIncomingTransfers.js";
-
-let eventCounter = 0;
-
-function generateId() {
-  return `${Date.now()}-${++eventCounter}-${Math.floor(Math.random() * 100000)}`;
-}
 
 export function App() {
   const { socket, connected: signalingConnected, connectionError } = useSignalingSocket();
@@ -23,7 +17,6 @@ export function App() {
   const [peerError, setPeerError] = useState("");
   const [connectingPeerId, setConnectingPeerId] = useState("");
   const [pendingAcceptPeer, setPendingAcceptPeer] = useState(null);
-  const [events, setEvents] = useState([]);
   const {
     incoming,
     downloads,
@@ -31,14 +24,20 @@ export function App() {
     acceptIncoming,
     rejectIncoming,
     clearDownload,
+    clearAllDownloads,
   } = useIncomingTransfers();
   const remotePeerId = remotePeer?.id || "";
 
-  const addEvent = useCallback((message) => {
-    setEvents((current) => [
-      { id: generateId(), message, at: new Date().toLocaleTimeString() },
-      ...current.slice(0, 5),
-    ]);
+  const handlePeerEvent = useCallback((message) => {
+    if (/failed|error/i.test(message)) {
+      if (/failed/i.test(message)) {
+        setPeerError(
+          "Connection failed. If you are using a mobile hotspot, direct peer-to-peer connections are often blocked by the mobile OS. Please connect both devices to the same Wi-Fi router."
+        );
+      } else {
+        setPeerError(message);
+      }
+    }
   }, []);
 
   const {
@@ -46,13 +45,14 @@ export function App() {
     channelState,
     connectionState,
     iceConnectionState,
+    signalingReady,
     resetPeer,
   } = usePeerConnection({
     socket,
     remotePeerId,
     isInitiator,
     onDataMessage: handleDataMessage,
-    onEvent: addEvent,
+    onEvent: handlePeerEvent,
   });
 
   useEffect(() => {
@@ -87,7 +87,6 @@ export function App() {
       setRemotePeer(peer);
       setIsInitiator(false);
       setPendingAcceptPeer(peer);
-      addEvent(`${peer.displayName} connected.`);
     };
 
     const handleConnectAccepted = ({ peer }) => {
@@ -97,7 +96,6 @@ export function App() {
       setPendingAcceptPeer(null);
       setRemotePeer(peer);
       setIsInitiator(true);
-      addEvent(`Connected to ${peer.displayName}.`);
     };
 
     const handlePeerDisconnect = ({ peerId } = {}) => {
@@ -110,7 +108,6 @@ export function App() {
       setIsInitiator(false);
       setPendingAcceptPeer(null);
       setConnectingPeerId("");
-      addEvent("Peer disconnected.");
     };
 
     socket.on("peer:list", handlePeerList);
@@ -124,10 +121,16 @@ export function App() {
       socket.off("peer:connect-accepted", handleConnectAccepted);
       socket.off("peer:disconnect", handlePeerDisconnect);
     };
-  }, [addEvent, remotePeerId, resetPeer, socket]);
+  }, [remotePeerId, resetPeer, socket]);
 
   useEffect(() => {
-    if (!socket || !pendingAcceptPeer || remotePeerId !== pendingAcceptPeer.id || isInitiator) {
+    if (
+      !socket ||
+      !pendingAcceptPeer ||
+      remotePeerId !== pendingAcceptPeer.id ||
+      isInitiator ||
+      !signalingReady
+    ) {
       return undefined;
     }
 
@@ -146,7 +149,7 @@ export function App() {
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [isInitiator, pendingAcceptPeer, remotePeerId, resetPeer, socket]);
+  }, [isInitiator, pendingAcceptPeer, remotePeerId, resetPeer, signalingReady, socket]);
 
   const connectPeer = useCallback((peer) => {
     if (!socket || !peer?.id) {
@@ -167,10 +170,8 @@ export function App() {
         setPeerError(response?.error || "Could not connect to user.");
         return;
       }
-
-      addEvent(`Connecting to ${peer.displayName}.`);
     });
-  }, [addEvent, remotePeerId, resetPeer, socket]);
+  }, [remotePeerId, resetPeer, socket]);
 
   const disconnectPeer = useCallback(() => {
     socket?.emit("peer:disconnect");
@@ -179,8 +180,7 @@ export function App() {
     setIsInitiator(false);
     setPendingAcceptPeer(null);
     setConnectingPeerId("");
-    addEvent("Peer disconnected.");
-  }, [addEvent, resetPeer, socket]);
+  }, [resetPeer, socket]);
 
   return (
     <main className="shell">
@@ -212,6 +212,7 @@ export function App() {
             deviceName={deviceName}
             peers={availablePeers}
             connectedPeer={remotePeer}
+            channelState={channelState}
             connectingPeerId={connectingPeerId}
             error={peerError}
             disabled={!signalingConnected}
@@ -227,44 +228,10 @@ export function App() {
             onAcceptIncoming={acceptIncoming}
             onRejectIncoming={rejectIncoming}
             onClearDownload={clearDownload}
+            onClearAllDownloads={clearAllDownloads}
           />
         </div>
-
-        <section className="activity" aria-label="Connection activity">
-          <div className="activity-header">
-            <h2>Activity</h2>
-            <span>{events.length} recent</span>
-          </div>
-          {events.length === 0 ? (
-            <div className="empty-state">
-              <PlugZap size={18} aria-hidden="true" />
-              <span>No events yet.</span>
-            </div>
-          ) : (
-            <ul>
-              {events.map((event) => (
-                <li key={event.id}>
-                  <span>{event.message}</span>
-                  <time>{event.at}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </section>
-
-      <aside className="rail" aria-label="Runtime details">
-        <div className="metric">
-          <Link2 size={18} aria-hidden="true" />
-          <span>Device</span>
-          <strong>{selfPeer?.displayName || deviceName}</strong>
-        </div>
-        <div className="metric">
-          <FileUp size={18} aria-hidden="true" />
-          <span>Peer</span>
-          <strong>{remotePeer?.displayName || "None"}</strong>
-        </div>
-      </aside>
     </main>
   );
 }

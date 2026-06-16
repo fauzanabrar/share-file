@@ -7,8 +7,12 @@ export function useIncomingTransfers() {
   const [incoming, setIncoming] = useState(null);
   const [downloads, setDownloads] = useState([]);
   const lastUpdateRef = useRef(0);
+  const autoAcceptRef = useRef(false);
+  const directoryHandleRef = useRef(null);
 
   const failActiveTransfer = useCallback((active, message) => {
+    autoAcceptRef.current = false;
+    directoryHandleRef.current = null;
     if (!active || active.failed) {
       return;
     }
@@ -64,12 +68,59 @@ export function useIncomingTransfers() {
         setIncoming(null);
         activeRef.current = null;
         partialTransfersRef.current.delete(active.id);
+
+        if (active.meta.queueSize && (active.meta.queueIndex === active.meta.queueSize - 1)) {
+          autoAcceptRef.current = false;
+          directoryHandleRef.current = null;
+        }
       } catch (error) {
         failActiveTransfer(active, error.message || "Could not save received file.");
       }
     },
     [failActiveTransfer],
   );
+
+  const performAccept = useCallback(async (pending) => {
+    if (!pending?.meta || !pending.channel || pending.channel.readyState !== "open") {
+      return;
+    }
+
+    const existing = partialTransfersRef.current.get(pending.meta.id);
+    let active;
+
+    if (existing?.meta.size === pending.meta.size) {
+      active = existing;
+    } else {
+      let sink;
+      if (directoryHandleRef.current) {
+        sink = await createDirectorySink(directoryHandleRef.current, pending.meta);
+      } else if (canStreamToDisk()) {
+        sink = await createDiskSink(pending.meta);
+      } else {
+        sink = createMemorySink(pending.meta);
+      }
+
+      active = {
+        id: pending.meta.id,
+        meta: pending.meta,
+        sink,
+        storageMode: sink.storageMode,
+        receivedBytes: 0,
+        writeChain: Promise.resolve(),
+        failed: false,
+      };
+    }
+
+    active.meta = pending.meta;
+    active.channel = pending.channel;
+    active.failed = false;
+    activeRef.current = active;
+    partialTransfersRef.current.set(active.id, active);
+    pendingRef.current = null;
+    lastUpdateRef.current = performance.now();
+    setIncoming(toIncomingState(active, "receiving"));
+    sendResumeOffset(active.channel, active.id, active.receivedBytes);
+  }, []);
 
   const handleDataMessage = useCallback(
     (data, channel) => {
@@ -81,7 +132,8 @@ export function useIncomingTransfers() {
 
         if (message.type === "file-meta") {
           const existing = partialTransfersRef.current.get(message.id);
-          pendingRef.current = { meta: message, channel };
+          const pending = { meta: message, channel };
+          pendingRef.current = pending;
 
           if (existing?.meta.size === message.size) {
             existing.meta = message;
@@ -89,6 +141,15 @@ export function useIncomingTransfers() {
             activeRef.current = existing;
             setIncoming(toIncomingState(existing, "receiving"));
             sendResumeOffset(channel, message.id, existing.receivedBytes);
+            return;
+          }
+
+          if (message.queueIndex === 0) {
+            autoAcceptRef.current = false;
+          }
+
+          if (autoAcceptRef.current) {
+            performAccept(pending);
             return;
           }
 
@@ -148,32 +209,31 @@ export function useIncomingTransfers() {
         setIncoming(toIncomingState(active, "receiving"));
       }
     },
-    [failActiveTransfer, finishActiveTransfer],
+    [failActiveTransfer, finishActiveTransfer, performAccept],
   );
 
-  const acceptIncoming = useCallback(async () => {
-    const pending = pendingRef.current;
-    if (!pending?.meta || !pending.channel || pending.channel.readyState !== "open") {
-      throw new Error("No incoming transfer is ready.");
+  const acceptIncoming = useCallback(async (autoAccept = false) => {
+    if (autoAccept) {
+      autoAcceptRef.current = true;
+      if (!directoryHandleRef.current && canUseDirectoryPicker()) {
+        try {
+          directoryHandleRef.current = await window.showDirectoryPicker({
+            id: "share-file-downloads-dir",
+            mode: "readwrite",
+            startIn: "downloads",
+          });
+        } catch (err) {
+          autoAcceptRef.current = false;
+          throw new Error("Directory selection is required to accept all files.");
+        }
+      }
     }
-
-    const existing = partialTransfersRef.current.get(pending.meta.id);
-    const active = existing?.meta.size === pending.meta.size
-      ? existing
-      : await createIncomingTransfer(pending.meta);
-
-    active.meta = pending.meta;
-    active.channel = pending.channel;
-    active.failed = false;
-    activeRef.current = active;
-    partialTransfersRef.current.set(active.id, active);
-    pendingRef.current = null;
-    lastUpdateRef.current = performance.now();
-    setIncoming(toIncomingState(active, "receiving"));
-    sendResumeOffset(active.channel, active.id, active.receivedBytes);
-  }, []);
+    await performAccept(pendingRef.current);
+  }, [performAccept]);
 
   const rejectIncoming = useCallback(() => {
+    autoAcceptRef.current = false;
+    directoryHandleRef.current = null;
     const pending = pendingRef.current;
     const active = activeRef.current;
     const id = pending?.meta.id || active?.id;
@@ -201,6 +261,15 @@ export function useIncomingTransfers() {
     });
   }, []);
 
+  const clearAllDownloads = useCallback(() => {
+    setDownloads((current) => {
+      current.forEach((download) => {
+        if (download.url) URL.revokeObjectURL(download.url);
+      });
+      return [];
+    });
+  }, []);
+
   return {
     incoming,
     downloads,
@@ -208,22 +277,7 @@ export function useIncomingTransfers() {
     acceptIncoming,
     rejectIncoming,
     clearDownload,
-  };
-}
-
-async function createIncomingTransfer(meta) {
-  const sink = canStreamToDisk()
-    ? await createDiskSink(meta)
-    : createMemorySink(meta);
-
-  return {
-    id: meta.id,
-    meta,
-    sink,
-    storageMode: sink.storageMode,
-    receivedBytes: 0,
-    writeChain: Promise.resolve(),
-    failed: false,
+    clearAllDownloads,
   };
 }
 
@@ -276,6 +330,31 @@ function createMemorySink(meta) {
 
 function canStreamToDisk() {
   return Boolean(window.isSecureContext && window.showSaveFilePicker);
+}
+
+async function createDirectorySink(directoryHandle, meta) {
+  const fileHandle = await directoryHandle.getFileHandle(meta.name, { create: true });
+  const writable = await fileHandle.createWritable();
+
+  return {
+    storageMode: "disk",
+    async write(chunk, position) {
+      await writable.write({ type: "write", position, data: chunk });
+    },
+    async close() {
+      await writable.close();
+      return { savedToDisk: true };
+    },
+    async abort() {
+      if (typeof writable.abort === "function") {
+        await writable.abort();
+      }
+    },
+  };
+}
+
+function canUseDirectoryPicker() {
+  return Boolean(window.isSecureContext && window.showDirectoryPicker);
 }
 
 function parseControlMessage(data) {

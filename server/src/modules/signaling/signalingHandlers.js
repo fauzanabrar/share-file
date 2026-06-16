@@ -10,5 +10,6 @@ export function handleSignalMessage(context, event, payload = {}) {
   context.sendEvent(payload.targetId, "signal:receive", {
     from: context.client.id,
     payload: payload.payload,
+    senderIp: context.client.ip,
   });
 }

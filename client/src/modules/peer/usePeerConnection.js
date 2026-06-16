@@ -15,6 +15,7 @@ export function usePeerConnection({
   const [channelState, setChannelState] = useState("closed");
   const [connectionState, setConnectionState] = useState("new");
   const [iceConnectionState, setIceConnectionState] = useState("new");
+  const [signalingReady, setSignalingReady] = useState(false);
 
   const cleanup = useCallback(() => {
     channelRef.current?.close();
@@ -26,6 +27,7 @@ export function usePeerConnection({
     setChannelState("closed");
     setConnectionState("new");
     setIceConnectionState("new");
+    setSignalingReady(false);
   }, []);
 
   const sendSignal = useCallback(
@@ -48,12 +50,18 @@ export function usePeerConnection({
       return undefined;
     }
 
+    let active = true;
     const pc = new RTCPeerConnection(peerConnectionConfig);
     pcRef.current = pc;
     setConnectionState(pc.connectionState);
     setIceConnectionState(pc.iceConnectionState);
 
     const configureChannel = (nextChannel) => {
+      if (!active) {
+        nextChannel.close();
+        return;
+      }
+
       channelRef.current = nextChannel;
       nextChannel.binaryType = "arraybuffer";
       nextChannel.bufferedAmountLowThreshold = 4 * 1024 * 1024;
@@ -61,10 +69,12 @@ export function usePeerConnection({
       setChannelState(nextChannel.readyState);
 
       nextChannel.onopen = () => {
+        if (!active) return;
         setChannelState(nextChannel.readyState);
         onEvent?.("Data channel opened.");
       };
       nextChannel.onclose = () => {
+        if (!active) return;
         setChannelState(nextChannel.readyState);
         onEvent?.("Data channel closed.");
       };
@@ -73,24 +83,63 @@ export function usePeerConnection({
     };
 
     pc.ondatachannel = (event) => configureChannel(event.channel);
-    pc.onconnectionstatechange = () => setConnectionState(pc.connectionState);
-    pc.oniceconnectionstatechange = () => setIceConnectionState(pc.iceConnectionState);
+    pc.onconnectionstatechange = () => {
+      if (!active) return;
+      setConnectionState(pc.connectionState);
+      if (pc.connectionState === "failed") {
+        onEvent?.("WebRTC connection failed.");
+      }
+    };
+    pc.oniceconnectionstatechange = () => {
+      if (!active) return;
+      setIceConnectionState(pc.iceConnectionState);
+      if (pc.iceConnectionState === "failed") {
+        onEvent?.("ICE connection failed.");
+      }
+    };
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendSignal({ type: "candidate", candidate: event.candidate });
+      if (active && event.candidate) {
+        const candidateJson = typeof event.candidate.toJSON === "function"
+          ? event.candidate.toJSON()
+          : {
+              candidate: event.candidate.candidate,
+              sdpMid: event.candidate.sdpMid,
+              sdpMLineIndex: event.candidate.sdpMLineIndex,
+              usernameFragment: event.candidate.usernameFragment,
+            };
+        sendSignal({ type: "candidate", candidate: candidateJson });
       }
     };
 
     const flushPendingCandidates = async () => {
       const candidates = pendingCandidatesRef.current.splice(0);
       for (const candidate of candidates) {
-        await pc.addIceCandidate(candidate);
+        try {
+          await pc.addIceCandidate(candidate);
+        } catch (e) {
+          // ignore or handle candidate addition error quietly
+        }
       }
     };
 
-    const handleSignal = async ({ from, payload }) => {
-      if (from !== remotePeerId || !payload) {
+    const handleSignal = async ({ from, payload, senderIp }) => {
+      if (!active || from !== remotePeerId || !payload) {
         return;
+      }
+
+      // Rewrite .local hostnames in SDP and candidates if senderIp is available
+      if (senderIp && senderIp !== "127.0.0.1" && senderIp !== "::1") {
+        const localHostnameRegex = /[a-zA-Z0-9-]+\.local/g;
+
+        if (payload.description?.sdp) {
+          const originalSdp = payload.description.sdp;
+          payload.description.sdp = originalSdp.replace(localHostnameRegex, senderIp);
+        }
+
+        if (payload.candidate?.candidate) {
+          const originalCand = payload.candidate.candidate;
+          payload.candidate.candidate = originalCand.replace(localHostnameRegex, senderIp);
+        }
       }
 
       try {
@@ -125,13 +174,17 @@ export function usePeerConnection({
     };
 
     socket.on("signal:receive", handleSignal);
+    setSignalingReady(true);
 
     const startOffer = async () => {
       try {
         const nextChannel = pc.createDataChannel(DATA_CHANNEL_LABEL, { ordered: true });
         configureChannel(nextChannel);
+        if (!active) return;
         const offer = await pc.createOffer();
+        if (!active) return;
         await pc.setLocalDescription(offer);
+        if (!active) return;
         sendSignal({ type: "offer", description: pc.localDescription });
         onEvent?.("Offer sent.");
       } catch (error) {
@@ -144,6 +197,8 @@ export function usePeerConnection({
     }
 
     return () => {
+      active = false;
+      setSignalingReady(false);
       socket.off("signal:receive", handleSignal);
       pc.close();
       channelRef.current?.close();
@@ -158,6 +213,7 @@ export function usePeerConnection({
     channelState,
     connectionState,
     iceConnectionState,
+    signalingReady,
     resetPeer: cleanup,
   };
 }
