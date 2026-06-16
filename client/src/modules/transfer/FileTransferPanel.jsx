@@ -12,6 +12,9 @@ export function FileTransferPanel({
   channelStates,
   incoming,
   downloads,
+  networkFiles,
+  onRequestFile,
+  onShareFile,
   onAcceptIncoming,
   onRejectIncoming,
   onClearDownload,
@@ -218,6 +221,8 @@ export function FileTransferPanel({
       return;
     }
     setSelectedFiles(files);
+    // Register files into sharing catalog immediately so others can discover them
+    files.forEach((f) => onShareFile?.(f));
     // Reset so the same file can be picked again.
     event.target.value = "";
   };
@@ -388,6 +393,35 @@ export function FileTransferPanel({
       ) : null}
 
       {incoming?.error ? <p className="error">{incoming.error}</p> : null}
+
+      {/* Decentralized LAN Shared Files Catalog */}
+      {networkFiles && networkFiles.size > 0 && (
+        <div className="network-files-stack">
+          <div className="download-stack-header">
+            <h3>Files Available on LAN</h3>
+          </div>
+          {Array.from(networkFiles.values()).map((file) => (
+            <div className="network-file-card" key={file.id}>
+              <div className="download-row">
+                <div className="network-file-info">
+                  <strong>{file.name}</strong>
+                  <span className="network-file-owner">
+                    {formatBytes(file.size)} • shared by {file.ownerName}
+                  </span>
+                </div>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => onRequestFile?.(file.id, file.ownerId)}
+                >
+                  <Download size={17} aria-hidden="true" />
+                  Download
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {downloads.length > 0 ? (
         <div className="download-stack">

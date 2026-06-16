@@ -3,7 +3,7 @@ const BACKPRESSURE_HIGH = 64 * 1024 * 1024;
 
 // ── File ID ──────────────────────────────────────────────────────────
 export function createFileId(file) {
-  return `${file.name}-${file.size}-${file.lastModified}`;
+  return `${file.name}-${file.size}-${file.lastModified || 0}`;
 }
 
 // ── Send a file (with background + resume) ──────────────────────────
@@ -21,6 +21,7 @@ export async function sendFile({ channel, file, signal, onProgress, queueIndex, 
     name: file.name,
     size: file.size,
     mimeType: file.type || "application/octet-stream",
+    lastModified: file.lastModified || 0,
     chunkSize: CHUNK_SIZE,
     queueIndex,
     queueSize,

@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DATA_CHANNEL_LABEL, peerConnectionConfig } from "./peerConfig.js";
+import { sendFile } from "../transfer/transferProtocol.js";
 
 export function usePeerConnections({
   socket,
   selfPeer,
   availablePeers,
+  sharedFiles,
   onDataMessage,
   onEvent,
 }) {
   const connectionsRef = useRef(new Map());
   const [channelStates, setChannelStates] = useState({});
+  const [networkFiles, setNetworkFiles] = useState(new Map());
+
+  const removePeerFiles = useCallback((peerId) => {
+    setNetworkFiles((prev) => {
+      const next = new Map(prev);
+      for (const [fileId, file] of next.entries()) {
+        if (file.ownerId === peerId) {
+          next.delete(fileId);
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const configureChannel = useCallback(
     (peerId, displayName, nextChannel) => {
@@ -26,18 +41,83 @@ export function usePeerConnections({
       nextChannel.onopen = () => {
         setChannelStates((prev) => ({ ...prev, [peerId]: nextChannel.readyState }));
         onEvent?.(`Data channel opened with ${displayName}.`);
+
+        // Send catalog immediately upon opening
+        try {
+          const catalogMsg = JSON.stringify({
+            type: "catalog-share",
+            files: Array.from(sharedFiles.values()).map((f) => ({
+              id: f.id,
+              name: f.name,
+              size: f.size,
+              mimeType: f.mimeType,
+            })),
+          });
+          nextChannel.send(catalogMsg);
+        } catch (err) {
+          onEvent?.(`Failed to send catalog to ${displayName}: ${err.message}`);
+        }
       };
 
       nextChannel.onclose = () => {
         setChannelStates((prev) => ({ ...prev, [peerId]: nextChannel.readyState }));
         onEvent?.(`Data channel closed with ${displayName}.`);
+        removePeerFiles(peerId);
       };
 
       nextChannel.onmessage = (event) => {
+        if (typeof event.data === "string") {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === "catalog-share") {
+              setNetworkFiles((prev) => {
+                const next = new Map(prev);
+                // Clear old files from this peer
+                for (const [fileId, file] of next.entries()) {
+                  if (file.ownerId === peerId) {
+                    next.delete(fileId);
+                  }
+                }
+                // Add new shared files
+                (message.files || []).forEach((f) => {
+                  next.set(f.id, {
+                    id: f.id,
+                    name: f.name,
+                    size: f.size,
+                    mimeType: f.mimeType,
+                    ownerId: peerId,
+                    ownerName: displayName,
+                  });
+                });
+                return next;
+              });
+              return;
+            }
+
+            if (message.type === "file-request") {
+              const fileRecord = sharedFiles.get(message.id);
+              if (fileRecord) {
+                onEvent?.(`Auto-sending requested file "${fileRecord.name}" to ${displayName}...`);
+                sendFile({
+                  channel: nextChannel,
+                  file: fileRecord.fileOrBlob,
+                  onProgress: () => {}, // Silent background updates
+                }).catch((err) => {
+                  onEvent?.(`Background send failed for ${fileRecord.name}: ${err.message}`);
+                });
+              } else {
+                onEvent?.(`Requested file ID ${message.id} not found in sharing catalog.`);
+              }
+              return;
+            }
+          } catch (e) {
+            // Ignore JSON parse errors, relay message normally
+          }
+        }
         onDataMessage?.(event.data, nextChannel);
       };
     },
-    [onDataMessage, onEvent]
+    [onDataMessage, onEvent, sharedFiles, removePeerFiles]
   );
 
   const setupPeerConnection = useCallback(
@@ -93,6 +173,31 @@ export function usePeerConnections({
     [socket, configureChannel, onEvent]
   );
 
+  // Broadcast catalog changes dynamically to all open peers
+  useEffect(() => {
+    if (!socket || !selfPeer) {
+      return;
+    }
+
+    const catalogMsg = JSON.stringify({
+      type: "catalog-share",
+      files: Array.from(sharedFiles.values()).map((f) => ({
+        id: f.id,
+        name: f.name,
+        size: f.size,
+        mimeType: f.mimeType,
+      })),
+    });
+
+    for (const [peerId, record] of connectionsRef.current.entries()) {
+      if (record.channel && record.channel.readyState === "open") {
+        try {
+          record.channel.send(catalogMsg);
+        } catch {}
+      }
+    }
+  }, [sharedFiles, selfPeer, socket]);
+
   // Auto-connect and negotiate WebRTC for all available LAN peers
   useEffect(() => {
     if (!socket || !selfPeer) {
@@ -107,6 +212,7 @@ export function usePeerConnections({
         record.channel?.close();
         record.pc.close();
         connectionsRef.current.delete(peerId);
+        removePeerFiles(peerId);
         setChannelStates((prev) => {
           const next = { ...prev };
           delete next[peerId];
@@ -143,7 +249,7 @@ export function usePeerConnections({
         }
       }
     });
-  }, [socket, selfPeer, availablePeers, setupPeerConnection, configureChannel, onEvent]);
+  }, [socket, selfPeer, availablePeers, setupPeerConnection, configureChannel, removePeerFiles, onEvent]);
 
   // Handle incoming signaling messages
   useEffect(() => {
@@ -232,6 +338,7 @@ export function usePeerConnections({
       }
       connectionsRef.current.clear();
       setChannelStates({});
+      setNetworkFiles(new Map());
     };
   }, []);
 
@@ -245,8 +352,23 @@ export function usePeerConnections({
     return open;
   }, []);
 
+  const requestFile = useCallback((fileId, ownerId) => {
+    const record = connectionsRef.current.get(ownerId);
+    if (!record || !record.channel || record.channel.readyState !== "open") {
+      throw new Error("Target device is not connected.");
+    }
+    record.channel.send(
+      JSON.stringify({
+        type: "file-request",
+        id: fileId,
+      })
+    );
+  }, []);
+
   return {
     channelStates,
     getOpenChannels,
+    networkFiles,
+    requestFile,
   };
 }

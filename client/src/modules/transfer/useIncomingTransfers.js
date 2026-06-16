@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-export function useIncomingTransfers() {
+export function useIncomingTransfers(onShareFile) {
   const activeRef = useRef(null);
   const pendingRef = useRef(null);
   const partialTransfersRef = useRef(new Map());
@@ -65,6 +65,15 @@ export function useIncomingTransfers() {
           },
           ...current,
         ]);
+
+        if (result?.blob) {
+          onShareFile?.(result.blob, {
+            name: active.meta.name,
+            mimeType: active.meta.mimeType,
+            lastModified: active.meta.lastModified || 0,
+          });
+        }
+
         setIncoming(null);
         activeRef.current = null;
         partialTransfersRef.current.delete(active.id);
@@ -77,7 +86,7 @@ export function useIncomingTransfers() {
         failActiveTransfer(active, error.message || "Could not save received file.");
       }
     },
-    [failActiveTransfer],
+    [failActiveTransfer, onShareFile],
   );
 
   const performAccept = useCallback(async (pending) => {
@@ -322,7 +331,7 @@ function createMemorySink(meta) {
     },
     async close() {
       const blob = new Blob([buffer], { type: meta.mimeType });
-      return { url: URL.createObjectURL(blob), savedToDisk: false };
+      return { url: URL.createObjectURL(blob), savedToDisk: false, blob };
     },
     async abort() {},
   };

@@ -12,6 +12,27 @@ export function App() {
   const [selfPeer, setSelfPeer] = useState(null);
   const [availablePeers, setAvailablePeers] = useState([]);
   const [peerError, setPeerError] = useState("");
+  const [sharedFiles, setSharedFiles] = useState(new Map());
+
+  const shareFile = useCallback((fileOrBlob, metadata = {}) => {
+    const name = fileOrBlob.name || metadata.name || "file";
+    const size = fileOrBlob.size;
+    const mimeType = fileOrBlob.type || metadata.mimeType || "application/octet-stream";
+    const lastModified = fileOrBlob.lastModified || metadata.lastModified || 0;
+
+    const id = `${name}-${size}-${lastModified}`;
+    setSharedFiles((prev) => {
+      const next = new Map(prev);
+      next.set(id, {
+        id,
+        name,
+        size,
+        mimeType,
+        fileOrBlob,
+      });
+      return next;
+    });
+  }, []);
 
   const {
     incoming,
@@ -21,7 +42,7 @@ export function App() {
     rejectIncoming,
     clearDownload,
     clearAllDownloads,
-  } = useIncomingTransfers();
+  } = useIncomingTransfers(shareFile);
 
   const handlePeerEvent = useCallback((message) => {
     if (/failed|error/i.test(message)) {
@@ -35,10 +56,11 @@ export function App() {
     }
   }, []);
 
-  const { channelStates, getOpenChannels } = usePeerConnections({
+  const { channelStates, getOpenChannels, networkFiles, requestFile } = usePeerConnections({
     socket,
     selfPeer,
     availablePeers,
+    sharedFiles,
     onDataMessage: handleDataMessage,
     onEvent: handlePeerEvent,
   });
@@ -123,6 +145,9 @@ export function App() {
             channelStates={channelStates}
             incoming={incoming}
             downloads={downloads}
+            networkFiles={networkFiles}
+            onRequestFile={requestFile}
+            onShareFile={shareFile}
             onAcceptIncoming={acceptIncoming}
             onRejectIncoming={rejectIncoming}
             onClearDownload={clearDownload}

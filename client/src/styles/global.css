@@ -506,3 +506,33 @@ input[type="file"] {
   font-weight: 500;
   line-height: 1.4;
 }
+
+.network-files-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  margin-bottom: 28px;
+  padding-top: 18px;
+  border-top: 1px dashed #d9e0d7;
+}
+
+.network-file-card {
+  padding: 12px;
+  background: #fcfdfe;
+  border: 1px solid #d0e1fd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 98, 255, 0.03);
+}
+
+.network-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.network-file-owner {
+  color: #0062ff;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
