@@ -55,7 +55,6 @@ export function registerSocketGateway(httpServer) {
       id: randomUUID(),
       ws,
       displayName: "LAN device",
-      connectedPeerId: "",
       ip: clientIp,
     };
     clients.set(client.id, client);
@@ -71,10 +70,8 @@ export function registerSocketGateway(httpServer) {
         clients,
         reply: (payload) => reply(client, message.requestId, payload),
         sendEvent,
-        serializePeer: (peer) => serializePeer(peer, client.id),
+        serializePeer: (peer) => serializePeer(peer),
         broadcastPeerLists,
-        connectPeers,
-        clearPeerConnection,
       };
 
       if (message.event.startsWith("peer:")) {
@@ -88,7 +85,6 @@ export function registerSocketGateway(httpServer) {
     });
 
     ws.on("close", () => {
-      clearPeerConnection(client.id);
       clients.delete(client.id);
       broadcastPeerLists();
     });
@@ -124,52 +120,20 @@ function sendEvent(clientId, event, payload) {
   target.ws.send(JSON.stringify({ event, payload }));
 }
 
-function connectPeers(firstId, secondId) {
-  const first = clients.get(firstId);
-  const second = clients.get(secondId);
-  if (!first || !second) {
-    return;
-  }
-
-  clearPeerConnection(first.id);
-  clearPeerConnection(second.id);
-
-  first.connectedPeerId = second.id;
-  second.connectedPeerId = first.id;
-  broadcastPeerLists();
-}
-
-function clearPeerConnection(clientId) {
-  const client = clients.get(clientId);
-  const peerId = client?.connectedPeerId;
-  if (!client || !peerId) {
-    return;
-  }
-
-  client.connectedPeerId = "";
-  const peer = clients.get(peerId);
-  if (peer?.connectedPeerId === clientId) {
-    peer.connectedPeerId = "";
-    sendEvent(peer.id, "peer:disconnect", { peerId: clientId });
-  }
-}
-
 function broadcastPeerLists() {
   for (const client of clients.values()) {
     sendEvent(client.id, "peer:list", {
-      self: serializePeer(client, client.id),
+      self: serializePeer(client),
       peers: [...clients.values()]
         .filter((peer) => peer.id !== client.id)
-        .map((peer) => serializePeer(peer, client.id)),
+        .map((peer) => serializePeer(peer)),
     });
   }
 }
 
-function serializePeer(peer, viewerId = "") {
+function serializePeer(peer) {
   return {
     id: peer.id,
     displayName: peer.displayName || "LAN device",
-    connected: Boolean(peer.connectedPeerId),
-    connectedToSelf: Boolean(viewerId && peer.connectedPeerId === viewerId),
   };
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle } from "lucide-react";
-import { PairingCard } from "./modules/pairing/PairingCard.jsx";
-import { usePeerConnection } from "./modules/peer/usePeerConnection.js";
+import { usePeerConnections } from "./modules/peer/usePeerConnections.js";
 import { useSignalingSocket } from "./modules/signaling/useSignalingSocket.js";
 import { ConnectionStatus } from "./modules/status/ConnectionStatus.jsx";
 import { FileTransferPanel } from "./modules/transfer/FileTransferPanel.jsx";
@@ -12,11 +11,8 @@ export function App() {
   const [deviceName] = useState(() => getOrCreateDeviceName());
   const [selfPeer, setSelfPeer] = useState(null);
   const [availablePeers, setAvailablePeers] = useState([]);
-  const [remotePeer, setRemotePeer] = useState(null);
-  const [isInitiator, setIsInitiator] = useState(false);
   const [peerError, setPeerError] = useState("");
-  const [connectingPeerId, setConnectingPeerId] = useState("");
-  const [pendingAcceptPeer, setPendingAcceptPeer] = useState(null);
+
   const {
     incoming,
     downloads,
@@ -26,7 +22,6 @@ export function App() {
     clearDownload,
     clearAllDownloads,
   } = useIncomingTransfers();
-  const remotePeerId = remotePeer?.id || "";
 
   const handlePeerEvent = useCallback((message) => {
     if (/failed|error/i.test(message)) {
@@ -40,17 +35,10 @@ export function App() {
     }
   }, []);
 
-  const {
-    channel,
-    channelState,
-    connectionState,
-    iceConnectionState,
-    signalingReady,
-    resetPeer,
-  } = usePeerConnection({
+  const { channelStates, getOpenChannels } = usePeerConnections({
     socket,
-    remotePeerId,
-    isInitiator,
+    selfPeer,
+    availablePeers,
     onDataMessage: handleDataMessage,
     onEvent: handlePeerEvent,
   });
@@ -80,107 +68,16 @@ export function App() {
       setAvailablePeers(peers);
     };
 
-    const handleConnectRequest = ({ peer }) => {
-      if (!peer?.id) return;
-      setPeerError("");
-      setConnectingPeerId("");
-      setRemotePeer(peer);
-      setIsInitiator(false);
-      setPendingAcceptPeer(peer);
-    };
-
-    const handleConnectAccepted = ({ peer }) => {
-      if (!peer?.id) return;
-      setPeerError("");
-      setConnectingPeerId("");
-      setPendingAcceptPeer(null);
-      setRemotePeer(peer);
-      setIsInitiator(true);
-    };
-
-    const handlePeerDisconnect = ({ peerId } = {}) => {
-      if (peerId && remotePeerId && peerId !== remotePeerId) {
-        return;
-      }
-
-      resetPeer();
-      setRemotePeer(null);
-      setIsInitiator(false);
-      setPendingAcceptPeer(null);
-      setConnectingPeerId("");
-    };
-
     socket.on("peer:list", handlePeerList);
-    socket.on("peer:connect-request", handleConnectRequest);
-    socket.on("peer:connect-accepted", handleConnectAccepted);
-    socket.on("peer:disconnect", handlePeerDisconnect);
 
     return () => {
       socket.off("peer:list", handlePeerList);
-      socket.off("peer:connect-request", handleConnectRequest);
-      socket.off("peer:connect-accepted", handleConnectAccepted);
-      socket.off("peer:disconnect", handlePeerDisconnect);
     };
-  }, [remotePeerId, resetPeer, socket]);
+  }, [socket]);
 
-  useEffect(() => {
-    if (
-      !socket ||
-      !pendingAcceptPeer ||
-      remotePeerId !== pendingAcceptPeer.id ||
-      isInitiator ||
-      !signalingReady
-    ) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      socket.emit("peer:accept", { targetId: pendingAcceptPeer.id }, (response) => {
-        if (!response?.ok) {
-          setPeerError(response?.error || "Could not accept connection.");
-          resetPeer();
-          setRemotePeer(null);
-          setPendingAcceptPeer(null);
-          return;
-        }
-
-        setPendingAcceptPeer(null);
-      });
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, [isInitiator, pendingAcceptPeer, remotePeerId, resetPeer, signalingReady, socket]);
-
-  const connectPeer = useCallback((peer) => {
-    if (!socket || !peer?.id) {
-      return;
-    }
-
-    if (remotePeerId && remotePeerId !== peer.id) {
-      resetPeer();
-      setRemotePeer(null);
-      setIsInitiator(false);
-    }
-
-    setPeerError("");
-    setConnectingPeerId(peer.id);
-    socket.emit("peer:connect", { targetId: peer.id }, (response) => {
-      if (!response?.ok) {
-        setConnectingPeerId("");
-        setPeerError(response?.error || "Could not connect to user.");
-        return;
-      }
-    });
-  }, [remotePeerId, resetPeer, socket]);
-
-  const disconnectPeer = useCallback(() => {
-    socket?.emit("peer:disconnect");
-    resetPeer();
-    setRemotePeer(null);
-    setIsInitiator(false);
-    setPendingAcceptPeer(null);
-    setConnectingPeerId("");
-  }, [resetPeer, socket]);
+  const activePeers = availablePeers.filter((p) => channelStates[p.id] === "open");
+  const connectedCount = activePeers.length;
+  const peerCount = availablePeers.length;
 
   return (
     <main className="shell">
@@ -189,12 +86,19 @@ export function App() {
           <div>
             <p className="eyebrow">Share File</p>
             <h1>Local browser transfer</h1>
+            <p className="active-devices-subtitle">
+              {selfPeer ? `Logged in as ${selfPeer.displayName}` : `Registering as ${deviceName}...`}
+              {connectedCount > 0
+                ? ` • Connected to: ${activePeers.map((p) => p.displayName).join(", ")}`
+                : peerCount > 0
+                ? " • Connecting to devices..."
+                : " • Waiting for other devices on the same Wi-Fi..."}
+            </p>
           </div>
           <ConnectionStatus
             signalingConnected={signalingConnected}
-            connectionState={connectionState}
-            iceConnectionState={iceConnectionState}
-            channelState={channelState}
+            peerCount={peerCount}
+            connectedCount={connectedCount}
           />
         </header>
 
@@ -206,23 +110,17 @@ export function App() {
           </div>
         )}
 
-        <div className="grid">
-          <PairingCard
-            selfPeer={selfPeer}
-            deviceName={deviceName}
-            peers={availablePeers}
-            connectedPeer={remotePeer}
-            channelState={channelState}
-            connectingPeerId={connectingPeerId}
-            error={peerError}
-            disabled={!signalingConnected}
-            onConnectPeer={connectPeer}
-            onDisconnectPeer={disconnectPeer}
-          />
+        {peerError && (
+          <div className="connection-error-banner" role="alert">
+            <AlertCircle size={18} aria-hidden="true" />
+            <span>Network warning: {peerError}</span>
+          </div>
+        )}
 
+        <div className="single-column-layout">
           <FileTransferPanel
-            channel={channel}
-            channelState={channelState}
+            getOpenChannels={getOpenChannels}
+            channelStates={channelStates}
             incoming={incoming}
             downloads={downloads}
             onAcceptIncoming={acceptIncoming}

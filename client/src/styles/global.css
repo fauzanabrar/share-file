@@ -493,3 +493,16 @@ input[type="file"] {
   color: #17201b;
   font-weight: 600;
 }
+
+.single-column-layout {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.active-devices-subtitle {
+  color: #647268;
+  font-size: 0.92rem;
+  margin-top: 8px;
+  font-weight: 500;
+  line-height: 1.4;
+}

@@ -8,8 +8,8 @@ import {
 } from "./transferProtocol.js";
 
 export function FileTransferPanel({
-  channel,
-  channelState,
+  getOpenChannels,
+  channelStates,
   incoming,
   downloads,
   onAcceptIncoming,
@@ -25,7 +25,13 @@ export function FileTransferPanel({
   const [acceptingIncoming, setAcceptingIncoming] = useState(false);
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [resumeId, setResumeId] = useState(null);
-  const channelReady = channelState === "open";
+
+  const openChannels = getOpenChannels();
+  const channelReady = openChannels.length > 0;
+
+  // Derive a collective channel state for the status badge
+  const hasConnecting = Object.values(channelStates).some((s) => s === "connecting");
+  const channelState = channelReady ? "open" : hasConnecting ? "connecting" : "closed";
 
   // Load pending (interrupted) transfers from localStorage on mount.
   useEffect(() => {
@@ -52,6 +58,12 @@ export function FileTransferPanel({
       return;
     }
 
+    const currentOpenChannels = getOpenChannels();
+    if (currentOpenChannels.length === 0) {
+      setError("No connected devices.");
+      return;
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
     setError("");
@@ -63,19 +75,39 @@ export function FileTransferPanel({
     });
 
     try {
-      await sendFile({
-        channel,
-        file,
-        signal: controller.signal,
-        onProgress: (progress) => {
-          setSending({
-            name: file.name,
-            sentBytes: progress.sentBytes,
-            totalBytes: progress.totalBytes,
-            speedBytesPerSecond: progress.speedBytesPerSecond,
-          });
-        },
+      const progresses = {};
+      const speeds = {};
+
+      const sendPromises = currentOpenChannels.map(({ peerId, record }) => {
+        return sendFile({
+          channel: record.channel,
+          file,
+          signal: controller.signal,
+          onProgress: (progress) => {
+            progresses[peerId] = progress.sentBytes;
+            speeds[peerId] = progress.speedBytesPerSecond;
+
+            const activeIds = currentOpenChannels.map((c) => c.peerId);
+            const sumSent = activeIds.reduce((sum, id) => sum + (progresses[id] || 0), 0);
+            const sumSpeed = activeIds.reduce((sum, id) => sum + (speeds[id] || 0), 0);
+            const avgSent = Math.min(file.size, Math.round(sumSent / activeIds.length));
+
+            setSending({
+              name: file.name,
+              sentBytes: avgSent,
+              totalBytes: file.size,
+              speedBytesPerSecond: sumSpeed,
+            });
+          },
+        });
       });
+
+      const results = await Promise.all(sendPromises.map((p) => p.catch((err) => err)));
+      const failures = results.filter((r) => r instanceof Error && r.message !== "Transfer cancelled.");
+      if (failures.length > 0) {
+        setError(`Transfer failed for some devices: ${failures.map((f) => f.message).join(", ")}`);
+      }
+
       setSelectedFiles([]);
       setPendingTransfers(getPendingTransferStates());
     } catch (sendError) {
@@ -98,39 +130,62 @@ export function FileTransferPanel({
     const files = [...selectedFiles];
     setSelectedFiles([]);
 
-    for (let i = 0; i < files.length; i++) {
-      if (channel?.readyState !== "open") {
-        setError("Connection lost. Remaining files were not sent.");
-        break;
-      }
+    const currentOpenChannels = getOpenChannels();
+    if (currentOpenChannels.length === 0) {
+      setError("No connected devices to send files to.");
+      return;
+    }
 
+    for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const progressName = files.length > 1 ? `[${i + 1}/${files.length}] ${file.name}` : file.name;
+
       setSending({
-        name: files.length > 1 ? `[${i + 1}/${files.length}] ${file.name}` : file.name,
+        name: progressName,
         sentBytes: 0,
         totalBytes: file.size,
         speedBytesPerSecond: 0,
       });
 
       try {
-        await sendFile({
-          channel,
-          file,
-          signal: controller.signal,
-          queueIndex: i,
-          queueSize: files.length,
-          onProgress: (progress) => {
-            setSending({
-              name: files.length > 1 ? `[${i + 1}/${files.length}] ${file.name}` : file.name,
-              sentBytes: progress.sentBytes,
-              totalBytes: progress.totalBytes,
-              speedBytesPerSecond: progress.speedBytesPerSecond,
-            });
-          },
+        const progresses = {};
+        const speeds = {};
+
+        const sendPromises = currentOpenChannels.map(({ peerId, record }) => {
+          return sendFile({
+            channel: record.channel,
+            file,
+            signal: controller.signal,
+            queueIndex: i,
+            queueSize: files.length,
+            onProgress: (progress) => {
+              progresses[peerId] = progress.sentBytes;
+              speeds[peerId] = progress.speedBytesPerSecond;
+
+              const activeIds = currentOpenChannels.map((c) => c.peerId);
+              const sumSent = activeIds.reduce((sum, id) => sum + (progresses[id] || 0), 0);
+              const sumSpeed = activeIds.reduce((sum, id) => sum + (speeds[id] || 0), 0);
+              const avgSent = Math.min(file.size, Math.round(sumSent / activeIds.length));
+
+              setSending({
+                name: progressName,
+                sentBytes: avgSent,
+                totalBytes: file.size,
+                speedBytesPerSecond: sumSpeed,
+              });
+            },
+          });
         });
+
+        const results = await Promise.all(sendPromises.map((p) => p.catch((err) => err)));
+        const failures = results.filter((r) => r instanceof Error && r.message !== "Transfer cancelled.");
+        if (failures.length > 0) {
+          setError(`Transfer failed for some devices: ${failures.map((f) => f.message).join(", ")}`);
+          break;
+        }
       } catch (sendError) {
         if (sendError.message !== "Transfer cancelled.") {
           setError(sendError.message);
