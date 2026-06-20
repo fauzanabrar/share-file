@@ -166,6 +166,7 @@ export function usePeerConnections({
       // Clean up failed connection
       const record = connectionsRef.current.get(peerId);
       if (record) {
+        clearTimeout(record._connectTimer);
         record.channel?.close();
         record.pc.close();
         record.closed = true; // Prevent duplicate retry from simultaneous state changes
@@ -232,6 +233,20 @@ export function usePeerConnections({
       connectionsRef.current.set(peerId, record);
       setChannelStates((prev) => ({ ...prev, [peerId]: "connecting" }));
 
+      // Connection timeout: if WebRTC hasn't connected within 20s, skip to relay fallback.
+      // This is critical for VPS deployments where ICE may hang in "checking" forever
+      // (e.g. symmetric NATs) without ever reaching "failed".
+      const connectTimer = setTimeout(() => {
+        if (record.closed) return;
+        const state = pc.connectionState;
+        if (state !== "connected" && state !== "completed") {
+          record.closed = true;
+          pc.close();
+          triggerRetry(peerId, displayName, isInitiator);
+        }
+      }, 20_000);
+      record._connectTimer = connectTimer;
+
       pc.onconnectionstatechange = () => {
         // Sync states to UI
         const state = pc.connectionState;
@@ -239,6 +254,11 @@ export function usePeerConnections({
           ...prev,
           [peerId]: state === "connected" && record.channel?.readyState === "open" ? "open" : state,
         }));
+
+        // Connection established or permanently failed — cancel the timeout
+        if (state === "connected" || state === "completed" || state === "failed") {
+          clearTimeout(connectTimer);
+        }
 
         if ((state === "failed" || state === "disconnected") && !record.closed) {
           record.closed = true;
@@ -248,6 +268,9 @@ export function usePeerConnections({
 
       pc.oniceconnectionstatechange = () => {
         const state = pc.iceConnectionState;
+        if (state === "connected" || state === "completed" || state === "failed") {
+          clearTimeout(connectTimer);
+        }
         if (state === "failed" && !record.closed) {
           record.closed = true;
           triggerRetry(peerId, displayName, isInitiator);
@@ -313,6 +336,7 @@ export function usePeerConnections({
     if (!socket || !selfPeer) {
       // Clean up all active connections if signaling drops offline
       for (const [peerId, record] of connectionsRef.current.entries()) {
+        clearTimeout(record._connectTimer);
         record.channel?.close();
         record.pc.close();
         onPeerDisconnect?.(peerId);
@@ -330,6 +354,7 @@ export function usePeerConnections({
     // 1. Cleanup old connections that are no longer online
     for (const [peerId, record] of connectionsRef.current.entries()) {
       if (!currentPeerIds.has(peerId)) {
+        clearTimeout(record._connectTimer);
         record.channel?.close();
         record.pc.close();
         connectionsRef.current.delete(peerId);
@@ -489,6 +514,7 @@ export function usePeerConnections({
   useEffect(() => {
     return () => {
       for (const record of connectionsRef.current.values()) {
+        clearTimeout(record._connectTimer);
         record.channel?.close();
         record.pc.close();
       }
