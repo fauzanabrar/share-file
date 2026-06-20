@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, Info } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { usePeerConnections } from "./modules/peer/usePeerConnections.js";
 import { useSignalingSocket } from "./modules/signaling/useSignalingSocket.js";
 import { ConnectionStatus } from "./modules/status/ConnectionStatus.jsx";
@@ -49,11 +49,7 @@ export function App() {
 
   const handlePeerEvent = useCallback((message) => {
     // Relay fallback messages are informational, don't show as errors
-    if (/switching to server relay|accepting relay/i.test(message)) {
-      return;
-    }
-    if (/Relay channel opened/i.test(message)) {
-      setPeerError(message);
+    if (/switching to server relay|accepting relay|Relay channel opened/i.test(message)) {
       return;
     }
     if (/failed|error/i.test(message)) {
@@ -69,7 +65,7 @@ export function App() {
     cancelTransfersForPeer(peerId);
   }, [cancelTransfersForPeer]);
 
-  const { channelStates, getOpenChannels, networkFiles, requestFile } = usePeerConnections({
+  const { channelStates, getOpenChannels, getIsRelay, networkFiles, requestFile } = usePeerConnections({
     socket,
     selfPeer,
     availablePeers,
@@ -166,11 +162,6 @@ export function App() {
           />
         </header>
 
-        <div className="network-suggestion-banner">
-          <Info size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px" }} />
-          <span><strong>Tip:</strong> For the fastest and most reliable transfers, ensure both devices are connected to the same Wi-Fi or LAN network.</span>
-        </div>
-
         {connectionError && (
           <div className="connection-error-banner" role="alert">
             <AlertCircle size={18} aria-hidden="true" />
@@ -189,6 +180,7 @@ export function App() {
         <div className="single-column-layout">
           <FileTransferPanel
             getOpenChannels={getOpenChannels}
+            getIsRelay={getIsRelay}
             channelStates={channelStates}
             incoming={incoming}
             downloads={downloads}

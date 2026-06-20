@@ -563,9 +563,14 @@ export function usePeerConnections({
     );
   }, []);
 
+  const getIsRelay = useCallback((peerId) => {
+    return connectionsRef.current.get(peerId)?.isRelay || false;
+  }, []);
+
   return {
     channelStates,
     getOpenChannels,
+    getIsRelay,
     networkFiles,
     requestFile,
   };

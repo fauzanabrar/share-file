@@ -9,6 +9,7 @@ import {
 
 export function FileTransferPanel({
   getOpenChannels,
+  getIsRelay,
   channelStates,
   incoming,
   downloads,
@@ -390,10 +391,21 @@ export function FileTransferPanel({
         <div className="devices-list-inline">
           {availablePeers.map((p) => {
             const state = channelStates[p.id] || "closed";
+            const isRelay = state === "open" && getIsRelay && getIsRelay(p.id);
             return (
-              <span key={p.id} className={`device-badge ${state}`} title={`Connection State: ${state}`}>
-                <span className="device-badge-dot" />
-                {p.displayName}
+              <span key={p.id} className="device-badge-wrapper">
+                <span className={`device-badge ${state}`} title={`Connection State: ${state}`}>
+                  <span className="device-badge-dot" />
+                  {p.displayName}
+                </span>
+                {isRelay && (
+                  <span 
+                    className="relay-badge" 
+                    title="Connected via server relay. For faster direct transfers, ensure both devices are on the same Wi-Fi/LAN network."
+                  >
+                    ⚠️ Relay
+                  </span>
+                )}
               </span>
             );
           })}
