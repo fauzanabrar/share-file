@@ -183,6 +183,10 @@ export function usePeerConnections({
         onEvent?.(`Retrying connection with ${displayName} (attempt ${count + 1}/3) in 3 seconds...`);
         setTimeout(() => {
           retryingRef.current.delete(peerId);
+          // Don't retry if we've already fallen back to relay
+          const currentRecord = connectionsRef.current.get(peerId);
+          if (currentRecord?.isRelay) return;
+
           // Check if peer is still online before retrying (use ref for latest list)
           const isPeerOnline = availablePeersRef.current.some((p) => p.id === peerId);
           if (isPeerOnline && setupPeerConnectionRef.current) {
@@ -490,6 +494,11 @@ export function usePeerConnections({
 
       // Create relay channel if we don't have one yet
       if (!existing || existing.closed || !existing.isRelay) {
+        if (existing) {
+          existing.channel?.close();
+          existing.pc?.close();
+          existing.closed = true;
+        }
         const relay = new RelayChannel(socket, from);
         const relayRecord = {
           pc: { close() {}, connectionState: "connected", iceConnectionState: "connected" },

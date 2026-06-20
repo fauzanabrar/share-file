@@ -64,7 +64,7 @@ export class RelayChannel {
   }
 
   get bufferedAmount() {
-    return 0;
+    return this._socket.bufferedAmount || 0;
   }
 
   get bufferedAmountLowThreshold() {

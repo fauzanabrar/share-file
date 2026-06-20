@@ -135,6 +135,9 @@ function createSignalingClient(baseUrl) {
 
   return {
     emit: send,
+    get bufferedAmount() {
+      return ws.readyState === WebSocket.OPEN ? ws.bufferedAmount : 0;
+    },
     on(event, listener) {
       const eventListeners = listeners.get(event) || new Set();
       eventListeners.add(listener);
