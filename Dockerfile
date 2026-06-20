@@ -5,6 +5,10 @@ COPY client/package.json ./client/
 COPY server/package.json ./server/
 RUN npm ci
 COPY . .
+# Pass TURN server config at build time (Vite bakes env vars into the client bundle)
+ARG VITE_TURN_URL
+ARG VITE_TURN_USER
+ARG VITE_TURN_PASS
 RUN npm run build
 
 FROM node:22-alpine AS runner
