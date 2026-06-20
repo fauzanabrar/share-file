@@ -5,6 +5,7 @@ Owns multi-peer WebRTC connections setup, auto-announce pairing, and dynamic LAN
 ## Entry Points
 
 - `usePeerConnections.js` (plural) automatically establishes and manages concurrent peer connections with all active users on the LAN. It negotiates the WebRTC handshake, synchronizes catalogs, and forwards received channel messages.
+- `RelayChannel.js` provides a drop-in replacement for `RTCDataChannel` that routes binary file chunks through the WebSocket signaling server using base64 encoding, serving as a fallback for failed P2P connections.
 - `peerConfig.js` stores ICE server configuration.
 
 ## Glare Resolution & Auto-Pairing
@@ -23,7 +24,9 @@ When multiple users on the same LAN discover each other, they announce their pre
 ## Peer Disconnect & Link Cleanup
 
 - If a peer goes offline or the connection fails, the hook triggers the `onPeerDisconnect(peerId)` callback.
-- This allows the parent component to clean up dynamic assets, purge the peer's shared files, abort pending transfer sinks, and delete temporary swap files (`.crswap`) instantly.
+- If a WebRTC connection fails (e.g., due to strict NATs on different cellular networks), the system will automatically retry up to 1 time.
+- If it still fails, the hook automatically switches to a WebSocket relay via `RelayChannel.js`, establishing a reliable link through the central signaling server.
+- This allows the parent component to clean up dynamic assets, purge the peer's shared files, abort pending transfer sinks, and delete temporary swap files (`.crswap`) instantly when connections are lost.
 
 ## LAN Support Candidate & SDP Rewriting
 
