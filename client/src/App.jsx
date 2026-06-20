@@ -52,11 +52,15 @@ export function App() {
     if (/switching to server relay|accepting relay/i.test(message)) {
       return;
     }
+    if (/Relay channel opened/i.test(message)) {
+      setPeerError(message);
+      return;
+    }
     if (/failed|error/i.test(message)) {
       setPeerError(message);
     }
-    // Clear error on successful connection
-    if (/channel opened/i.test(message)) {
+    // Clear error on successful direct P2P connection
+    if (/Data channel opened/i.test(message)) {
       setPeerError("");
     }
   }, []);

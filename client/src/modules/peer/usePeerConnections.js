@@ -52,7 +52,12 @@ export function usePeerConnections({
       nextChannel.onopen = () => {
         setChannelStates((prev) => ({ ...prev, [peerId]: nextChannel.readyState }));
         retryCountsRef.current.set(peerId, 0); // Reset retry count on successful open
-        onEvent?.(`Data channel opened with ${displayName}.`);
+        const isRelay = connectionsRef.current.get(peerId)?.isRelay;
+        if (isRelay) {
+          onEvent?.(`Relay channel opened with ${displayName}. For direct P2P transfers, ensure both devices are on the same Wi-Fi/LAN network.`);
+        } else {
+          onEvent?.(`Data channel opened with ${displayName}.`);
+        }
 
         // Send catalog immediately upon opening (use ref to get latest sharedFiles)
         try {
