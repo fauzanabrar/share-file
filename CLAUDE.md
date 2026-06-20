@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Browser-based local file transfer via WebRTC DataChannels. A lightweight signaling server handles LAN user discovery and WebRTC setup only; file bytes move directly peer-to-peer.
+Browser-based local file transfer via WebRTC DataChannels. A lightweight signaling server handles LAN user discovery and WebRTC setup; file bytes move directly peer-to-peer (or via WebSocket relay if WebRTC fails).
 
 The current UI has two primary panels:
 - Users: shows the local random username/device name, visible LAN users, and connect/disconnect actions.
@@ -81,13 +81,15 @@ The sender saves `{ name, size, mimeType, lastSentOffset }` to `localStorage` ev
 - Custom WebSocket framing: `{ event, payload, requestId? }`.
 - Peer events: `peer:announce`, `peer:list`, `peer:connect`, `peer:connect-request`, `peer:accept`, `peer:connect-accepted`, `peer:disconnect`.
 - WebRTC relay events: `signal:send`, `signal:receive`.
+- Server relay events: `relay:open`, `relay:accept`, `relay:ready`, `relay:data`, `relay:close`.
 - `useSignalingSocket.js` buffers events until listeners are registered, so early offer/ICE messages are not lost during setup.
 
 ### Peer Setup
 
 - One active peer per browser client.
 - Random display name per browser profile, persisted in `localStorage`.
-- TURN server configurable via `VITE_TURN_URL`, `VITE_TURN_USER`, `VITE_TURN_PASS` env vars (see `.env.example`). Falls back to STUN-only when unset.
+- TURN server configurable via `VITE_TURN_URL`, `VITE_TURN_USER`, `VITE_TURN_PASS` env vars (see `.env.example`).
+- **Relay Fallback**: If WebRTC fails after 1 retry, automatically switches to server WebSocket relay (`RelayChannel.js`).
 - `usePeerConnection.js` exposes `signalingReady` after its `signal:receive` listener is installed.
 - The receiver waits for `signalingReady` before sending `peer:accept`; this keeps the initiator from sending an offer before the receiver can process it.
 - Transfer controls should stay disabled until the DataChannel state is `open`.
