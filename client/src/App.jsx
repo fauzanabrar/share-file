@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Info, X } from "lucide-react";
 import { usePeerConnections } from "./modules/peer/usePeerConnections.js";
 import { useSignalingSocket } from "./modules/signaling/useSignalingSocket.js";
 import { ConnectionStatus } from "./modules/status/ConnectionStatus.jsx";
@@ -13,6 +13,12 @@ export function App() {
   const [availablePeers, setAvailablePeers] = useState([]);
   const [peerError, setPeerError] = useState("");
   const [sharedFiles, setSharedFiles] = useState(new Map());
+  const [showTip, setShowTip] = useState(() => localStorage.getItem("sharefile:hide-tip") !== "true");
+
+  const dismissTip = useCallback(() => {
+    localStorage.setItem("sharefile:hide-tip", "true");
+    setShowTip(false);
+  }, []);
 
   const shareFile = useCallback((fileOrBlob, metadata = {}) => {
     const name = fileOrBlob.name || metadata.name || "file";
@@ -161,6 +167,18 @@ export function App() {
             connectedCount={connectedCount}
           />
         </header>
+
+        {showTip && (
+          <div className="network-suggestion-banner">
+            <div className="network-suggestion-content">
+              <Info size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <span><strong>Tip:</strong> For the fastest and most reliable transfers, ensure both devices are connected to the same Wi-Fi or LAN network.</span>
+            </div>
+            <button className="icon-button dismiss-btn" onClick={dismissTip} aria-label="Dismiss tip" title="Dismiss">
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {connectionError && (
           <div className="connection-error-banner" role="alert">
