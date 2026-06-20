@@ -87,16 +87,17 @@ The sender saves `{ name, size, mimeType, lastSentOffset }` to `localStorage` ev
 
 - One active peer per browser client.
 - Random display name per browser profile, persisted in `localStorage`.
-- No TURN relay; direct/STUN-only connectivity.
+- TURN server configurable via `VITE_TURN_URL`, `VITE_TURN_USER`, `VITE_TURN_PASS` env vars (see `.env.example`). Falls back to STUN-only when unset.
 - `usePeerConnection.js` exposes `signalingReady` after its `signal:receive` listener is installed.
 - The receiver waits for `signalingReady` before sending `peer:accept`; this keeps the initiator from sending an offer before the receiver can process it.
 - Transfer controls should stay disabled until the DataChannel state is `open`.
 
 ### File Input Methods
 
-- **File picker button**: standard `<input type="file">` in the Transfer panel.
+- **Clickable drop zone**: opens the native file picker. Hidden `<input type="file">` is triggered by clicking the drop zone.
 - **Drag-and-drop**: full-screen overlay with bounce animation when files are dragged over the page. Directories are filtered out. `dragend` listener prevents stuck overlay state.
 - **Clipboard paste**: Ctrl+V / Cmd+V anywhere on the page (excluding input/textarea). Clipboard images get auto-generated names. Platform detection uses `navigator.userAgent` (not deprecated `navigator.platform`).
+- **Auto-send**: files are sent immediately when added if a DataChannel is open. There is no Send button. The Cancel button (X) is embedded in the progress card.
 
 ### LAN Access
 
@@ -113,8 +114,8 @@ Default allows any origin when no `CLIENT_ORIGIN` env is set. Production deploym
 
 - `useIncomingTransfers.js` requires receiver acceptance before sending `file-resume`; `showSaveFilePicker()` must run from the Save button click.
 - `usePeerConnection.js` passes `(data, channel)` to `onDataMessage`; the receiver needs `channel` for resume.
-- `peerConfig.js` has STUN only, so some networks cannot connect without adding TURN.
+- `peerConfig.js` has STUN by default; add TURN via `VITE_TURN_URL` env var for internet deployment.
 - `bufferedAmountLowThreshold` is adjusted around transfer backpressure logic, not in `peerConfig.js`.
 - No tests or linting are configured.
 - `navigator.platform` is deprecated; use `navigator.userAgent?.includes("Mac")` for macOS detection.
-- `FileTransferPanel.jsx` uses stable refs (`onShareFileRef`, `channelReadyRef`, `sendingRef`) to keep the `addFiles` callback identity stable across renders.
+- `FileTransferPanel.jsx` uses stable refs (`onShareFileRef`, `channelReadyRef`, `sendingRef`, `sendFilesNowRef`) to keep the `addFiles` callback identity stable across renders.

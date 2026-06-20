@@ -182,6 +182,7 @@ export function App() {
             incoming={incoming}
             downloads={downloads}
             networkFiles={networkFiles}
+            sharedFiles={sharedFiles}
             onRequestFile={handleRequestFile}
             onShareFile={shareFile}
             onAcceptIncoming={acceptIncoming}

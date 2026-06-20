@@ -11,9 +11,9 @@ This is a WebRTC file transfer app with a monorepo layout:
 
 The app is designed for devices on the same LAN. Each browser receives a random username/device name, announces itself to the signaling server, and appears in the Users panel. There are no room codes. Clicking a user starts pairing, then WebRTC negotiation opens a direct DataChannel. The UI intentionally focuses on two panels only: Users and Transfer.
 
-**File input methods**: besides the file picker button, users can drag-and-drop files onto the Transfer panel (full-screen overlay with bounce animation) or paste files via Ctrl+V / Cmd+V anywhere on the page (excluding input/textarea fields). Directories are filtered out on drop. Clipboard images are auto-named.
+**File input methods**: the drop zone is clickable (opens file picker), supports drag-and-drop (full-screen overlay with bounce animation), and paste via Ctrl+V / Cmd+V anywhere on the page (excluding input/textarea fields). Directories are filtered out on drop. Clipboard images are auto-named. **Files are auto-sent immediately** when added if a DataChannel is open — there is no Send button.
 
-**Offline staging**: files can be staged before a peer connection is established. Once a DataChannel opens, staged files are broadcast as a catalog to all connected peers.
+**Offline staging**: files added before a peer connection is established are staged in the sender's shared files catalog. Once a DataChannel opens, the catalog is broadcast to all connected peers. The sender sees their files in a "Your Shared Files" section.
 
 ## File Transfer Protocol (`transferProtocol.js`)
 
@@ -52,5 +52,6 @@ The peer hook owns `RTCPeerConnection`, offer/answer exchange, ICE candidate rel
 - No tests or linting are configured.
 - `CHUNK_SIZE` must stay at or below 256KB; larger messages can exceed WebRTC SCTP message limits.
 - `navigator.platform` is deprecated; use `navigator.userAgent?.includes("Mac")` for macOS detection.
-- The `addFiles` callback in `FileTransferPanel.jsx` uses refs (`onShareFileRef`, `channelReadyRef`, `sendingRef`) to stay stable across renders and avoid unnecessary re-renders of parent components.
+- The `addFiles` callback in `FileTransferPanel.jsx` uses refs (`onShareFileRef`, `channelReadyRef`, `sendingRef`, `sendFilesNowRef`) to stay stable across renders and avoid unnecessary re-renders of parent components.
 - `isDragging` state is reset by a document-level `dragend` listener so dragging files outside the browser window does not leave the overlay stuck.
+- `peerConfig.js` reads TURN server config from `VITE_TURN_URL`, `VITE_TURN_USER`, `VITE_TURN_PASS` env vars (baked at build time by Vite). The Dockerfile accepts these as build args. See `.env.example`.

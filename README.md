@@ -5,7 +5,8 @@ Browser-based local file transfer using WebRTC DataChannels. The signaling serve
 ## What It Does
 
 - **Auto-Announce & Auto-Pairing**: Displays nearby LAN devices with random usernames/device names and establishes WebRTC connections automatically without room codes or manual clicking to connect.
-- **Drag-and-Drop & Clipboard Paste**: Drop files onto the page (full-screen overlay with bounce animation) or paste via Ctrl+V / Cmd+V anywhere. Directories are filtered; clipboard images are auto-named.
+- **Drag-and-Drop & Clipboard Paste**: Drop files onto the page (full-screen overlay with bounce animation) or paste via Ctrl+V / Cmd+V anywhere. Click the drop zone to open the file picker. Directories are filtered; clipboard images are auto-named.
+- **Auto-Send**: Files are sent immediately when added if a peer connection is open — no Send button. Cancel anytime from the progress card.
 - **Offline File Staging**: Stage files before a peer connection exists. Once connected, staged files are broadcast as a catalog to all peers.
 - **Decentralized LAN Shared Catalog**: Broadcasts staged and completed files to a local network library. Users can browse and request files shared by other connected devices.
 - **One-Click Direct Downloads**: Clicking "Download" next to any file in the network library opens the browser's save picker (or memory buffer) and begins downloading instantly, bypassing redundant "Accept" prompts.
@@ -47,5 +48,7 @@ npm start          # runs signaling server (production)
 
 - `VITE_SIGNALING_URL` - override signaling URL for production clients.
 - `CLIENT_ORIGIN` - comma-separated allowed origins; all origins are allowed when unset.
+- `VITE_TURN_URL` - TURN server URL (e.g. `turn:1.2.3.4:3478`). Required for internet/VPS deployment.
+- `VITE_TURN_USER` / `VITE_TURN_PASS` - TURN server credentials.
 - Local client uses port `5180`; server uses port `3000`.
 - Vite dev server proxies `/ws` and `/api` to the server.

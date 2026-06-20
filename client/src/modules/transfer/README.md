@@ -23,7 +23,7 @@ Owns file catalog registration, chunked sending and receiving, sequential transf
 
 ## Entry Points
 
-- `FileTransferPanel.jsx` renders the single-column Transfer panel, LAN status badges, staging controls, centered overlay modal, network catalog, and completed list.
+- `FileTransferPanel.jsx` renders the single-column Transfer panel with clickable drop zone, auto-send behavior, inline cancel in progress card, "Your Shared Files" section, LAN catalog, and completed downloads.
 - `transferProtocol.js` defines WebRTC data channel control messages, sequential queue transmissions, and chunk sending with native backpressure flow control (with 10ms polling fallbacks for throttled background tabs).
 - `useIncomingTransfers.js` manages incoming file streams, pre-created writable file sinks, directory pickers for "Save All" queues, auto-accept logic, and event-driven cleanup handles.
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, FileCheck, Send, Square, RotateCcw, Keyboard } from "lucide-react";
+import { Download, FileCheck, Send, Square, RotateCcw, Keyboard, X } from "lucide-react";
 import {
   sendFile,
   createFileId,
@@ -13,6 +13,7 @@ export function FileTransferPanel({
   incoming,
   downloads,
   networkFiles,
+  sharedFiles,
   onRequestFile,
   onShareFile,
   onAcceptIncoming,
@@ -23,8 +24,6 @@ export function FileTransferPanel({
 }) {
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
-  const dropZoneRef = useRef(null);
-  const [selectedFiles, setSelectedFiles] = useState([]);
   const [sending, setSending] = useState(null);
   const [error, setError] = useState("");
   const [acceptingIncoming, setAcceptingIncoming] = useState(false);
@@ -59,7 +58,6 @@ export function FileTransferPanel({
 
     if (pendingId && createFileId(file) !== pendingId) {
       setError("Select the same file to resume this transfer.");
-      setSelectedFiles([]);
       setPendingTransfers(getPendingTransferStates());
       return;
     }
@@ -114,7 +112,6 @@ export function FileTransferPanel({
         setError(`Transfer failed for some devices: ${failures.map((f) => f.message).join(", ")}`);
       }
 
-      setSelectedFiles([]);
       setPendingTransfers(getPendingTransferStates());
     } catch (sendError) {
       if (sendError.message !== "Transfer cancelled.") {
@@ -127,34 +124,32 @@ export function FileTransferPanel({
     }
   }, [getOpenChannels]);
 
-  // When the user picks a file and we were waiting for resume, start sending.
+  // When the user picks a file via the resume file input, start sending.
   useEffect(() => {
-    if (selectedFiles.length > 0 && resumeId) {
-      startSendWithFile(selectedFiles[0], resumeId);
+    if (resumeId && fileInputRef.current?.files?.length > 0) {
+      const file = fileInputRef.current.files[0];
+      startSendWithFile(file, resumeId);
       setResumeId(null);
+      fileInputRef.current.value = "";
     }
-  }, [selectedFiles, resumeId, startSendWithFile]);
+  }, [resumeId, startSendWithFile]);
 
-  const startSend = async () => {
-    if (selectedFiles.length === 0) {
-      return;
-    }
+  // Auto-send files immediately when added (replaces the Send button).
+  const getOpenChannelsRef = useRef(getOpenChannels);
+  getOpenChannelsRef.current = getOpenChannels;
 
+  const sendFilesNow = useCallback(async (files) => {
     setError("");
-    const files = [...selectedFiles];
-    setSelectedFiles([]);
-
-    const currentOpenChannels = getOpenChannels();
-    if (currentOpenChannels.length === 0) {
-      setError("No connected devices to send files to.");
-      return;
-    }
-
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      const currentOpenChannels = getOpenChannelsRef.current();
+      if (currentOpenChannels.length === 0) {
+        setError("No connected devices to send files to.");
+        return;
+      }
+
       const controller = new AbortController();
       abortRef.current = controller;
-
       const progressName = files.length > 1 ? `[${i + 1}/${files.length}] ${file.name}` : file.name;
 
       setSending({
@@ -197,7 +192,7 @@ export function FileTransferPanel({
         const results = await Promise.all(sendPromises.map((p) => p.catch((err) => err)));
         const failures = results.filter((r) => r instanceof Error && r.message !== "Transfer cancelled.");
         if (failures.length > 0) {
-          setError(`Transfer failed for some devices: ${failures.map((f) => f.message).join(", ")}`);
+          setError(`Transfer failed: ${failures.map((f) => f.message).join(", ")}`);
           break;
         }
       } catch (sendError) {
@@ -212,7 +207,7 @@ export function FileTransferPanel({
 
     setPendingTransfers(getPendingTransferStates());
     window.setTimeout(() => setSending(null), 900);
-  };
+  }, []);
 
   const cancelSend = () => {
     abortRef.current?.abort();
@@ -226,12 +221,15 @@ export function FileTransferPanel({
 
   // Shared logic for adding files from any source (picker, drag-drop, paste)
   // Uses refs so the callback is stable — avoids re-registering drop/paste handlers on every peer change.
+  const sendFilesNowRef = useRef(sendFilesNow);
+  sendFilesNowRef.current = sendFilesNow;
+
   const addFiles = useCallback(
     (files) => {
       if (files.length === 0) return;
       files.forEach((f) => onShareFileRef.current?.(f));
       if (channelReadyRef.current) {
-        setSelectedFiles((prev) => [...prev, ...files]);
+        sendFilesNowRef.current(files);
       }
     },
     [],
@@ -436,12 +434,15 @@ export function FileTransferPanel({
       ) : null}
 
       <div
-        ref={dropZoneRef}
         className={`drop-zone${isDragging ? " drag-active" : ""}`}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={() => !sending && fileInputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
       >
         {!isDragging && (
           <>
@@ -458,12 +459,12 @@ export function FileTransferPanel({
 
             {!channelReady && (
               <p className="file-picker-hint">
-                Files will be shared once other devices connect to the same network.
+                Click or drop files here. Shared once devices connect.
               </p>
             )}
             {channelReady && (
               <p className="file-picker-hint">
-                Files added here will be sent instantly to connected devices.
+                Click or drop files to send instantly to connected devices.
               </p>
             )}
           </>
@@ -476,50 +477,8 @@ export function FileTransferPanel({
         multiple
         disabled={Boolean(sending)}
         onChange={handleFileChange}
+        style={{ display: "none" }}
       />
-      <div className="button-row">
-        <button
-          className="button"
-          type="button"
-          disabled={!channelReady || selectedFiles.length === 0 || Boolean(sending)}
-          onClick={startSend}
-        >
-          <Send size={17} aria-hidden="true" />
-          Send
-        </button>
-        <button
-          className="button secondary"
-          type="button"
-          disabled={!sending}
-          onClick={cancelSend}
-        >
-          <Square size={16} aria-hidden="true" />
-          Cancel
-        </button>
-      </div>
-
-      {selectedFiles.length > 0 && !sending && (
-        <div className="selected-files-list">
-          <div className="selected-files-header">
-            <h3>Files to send ({selectedFiles.length})</h3>
-            <button
-              type="button"
-              className="button-link"
-              onClick={() => setSelectedFiles([])}
-            >
-              Clear all
-            </button>
-          </div>
-          <ul>
-            {selectedFiles.map((file, idx) => (
-              <li key={idx} className="selected-file-item">
-                <span className="file-name">{file.name}</span>
-                <span className="file-size">{formatBytes(file.size)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {sending ? (
         <TransferProgress
@@ -527,6 +486,7 @@ export function FileTransferPanel({
           bytes={sending.sentBytes}
           total={sending.totalBytes}
           speed={sending.speedBytesPerSecond}
+          onCancel={cancelSend}
         />
       ) : null}
 
@@ -555,6 +515,26 @@ export function FileTransferPanel({
       {incoming?.error ? <p className="error">{incoming.error}</p> : null}
 
       {/* Decentralized LAN Shared Files Catalog */}
+      {sharedFiles && sharedFiles.size > 0 && (
+        <div className="network-files-stack">
+          <div className="download-stack-header">
+            <h3>Your Shared Files</h3>
+          </div>
+          {Array.from(sharedFiles.values()).map((file) => (
+            <div className="network-file-card" key={file.id}>
+              <div className="download-row">
+                <div className="network-file-info">
+                  <strong>{file.name}</strong>
+                  <span className="network-file-owner">
+                    {formatBytes(file.size)} • shared by you
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {networkFiles && networkFiles.size > 0 && (
         <div className="network-files-stack">
           <div className="download-stack-header">
@@ -711,7 +691,7 @@ function IncomingRequest({ incoming, accepting, onAccept, onReject }) {
   );
 }
 
-function TransferProgress({ label, bytes, total, speed, status, incoming = false }) {
+function TransferProgress({ label, bytes, total, speed, status, incoming = false, onCancel }) {
   const percent = total ? Math.min(100, Math.round((bytes / total) * 100)) : 0;
   const statusText = incoming
     ? incomingStatusText(status)
@@ -722,6 +702,16 @@ function TransferProgress({ label, bytes, total, speed, status, incoming = false
       <div className="transfer-row">
         <strong>{label}</strong>
         <span>{statusText}</span>
+        {onCancel && (
+          <button
+            className="button-icon cancel-btn"
+            type="button"
+            onClick={onCancel}
+            title="Cancel transfer"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
       <div className="progress-shell" aria-label={`${percent}% complete`}>
         <div className="progress-bar" style={{ "--progress": `${percent}%` }} />
