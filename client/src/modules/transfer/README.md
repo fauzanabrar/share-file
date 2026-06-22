@@ -4,6 +4,7 @@ Owns file catalog registration, chunked sending and receiving, sequential transf
 
 ## Features & UX Flows
 
+- **Text Sharing**: Built-in textarea to type or paste text and send it to all connected peers instantly. Ctrl+Enter / Cmd+Enter sends. Received texts appear in a "Received Texts" section with sender name, timestamp, one-click Copy, and Dismiss buttons.
 - **Drag-and-Drop**: Full-screen overlay with bounce animation and file counter when files are dragged over the page. Directories are filtered out. A document-level `dragend` listener prevents the overlay from getting stuck when files are dragged outside the browser window.
 - **Clipboard Paste**: Ctrl+V / Cmd+V anywhere on the page (excluding input/textarea fields). Clipboard images get auto-generated names. Platform detection uses `navigator.userAgent` (not deprecated `navigator.platform`).
 - **Shortcut Badges**: Visual badges in the drop zone showing available shortcuts (drag-and-drop, paste) for feature discoverability.
@@ -35,3 +36,4 @@ Owns file catalog registration, chunked sending and receiving, sequential transf
 - `file-cancel` stops an in-progress transfer.
 - `file-request` (sent over data channel) requests a file by its catalog ID.
 - `catalog-share` (sent over data channel) synchronizes the array of shared files with the peer.
+- `text-share` (sent over data channel) delivers plain text to a peer. Intercepted in `usePeerConnections.js` before reaching `onDataMessage`. Shape: `{ type: "text-share", id, text, timestamp }`.

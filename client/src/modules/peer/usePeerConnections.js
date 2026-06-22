@@ -11,6 +11,7 @@ export function usePeerConnections({
   onDataMessage,
   onEvent,
   onPeerDisconnect,
+  onTextReceived,
 }) {
   const connectionsRef = useRef(new Map());
   const retryCountsRef = useRef(new Map());
@@ -130,6 +131,17 @@ export function usePeerConnections({
               }
               return;
             }
+
+            if (message.type === "text-share") {
+              onTextReceived?.({
+                id: message.id,
+                text: message.text,
+                senderName: displayName,
+                senderId: peerId,
+                timestamp: message.timestamp || Date.now(),
+              });
+              return;
+            }
           } catch (e) {
             // Ignore JSON parse errors, relay message normally
           }
@@ -137,7 +149,7 @@ export function usePeerConnections({
         onDataMessage?.(event.data, nextChannel, peerId);
       };
     },
-    [onDataMessage, onEvent, removePeerFiles]
+    [onDataMessage, onEvent, onTextReceived, removePeerFiles]
   );
 
   const negotiateInitiator = useCallback(

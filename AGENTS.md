@@ -11,6 +11,8 @@ This is a WebRTC file transfer app with a monorepo layout:
 
 The app is designed for devices on the same LAN. Each browser receives a random username/device name, announces itself to the signaling server, and appears in the Users panel. There are no room codes. Clicking a user starts pairing, then WebRTC negotiation opens a direct DataChannel. The UI intentionally focuses on two panels only: Users and Transfer.
 
+**Text sharing**: users can type or paste text into a textarea and send it to all connected peers instantly via the `text-share` control message. Received texts appear in a "Received Texts" section with sender name, timestamp, and a one-click Copy button. Ctrl+Enter / Cmd+Enter sends the text from the textarea.
+
 **File input methods**: the drop zone is clickable (opens file picker), supports drag-and-drop (full-screen overlay with bounce animation), and paste via Ctrl+V / Cmd+V anywhere on the page (excluding input/textarea fields). Directories are filtered out on drop. Clipboard images are auto-named. **Files are auto-sent immediately** when added if a DataChannel is open — there is no Send button.
 
 **Offline staging**: files added before a peer connection is established are staged in the sender's shared files catalog. Once a DataChannel opens, the catalog is broadcast to all connected peers. The sender sees their files in a "Your Shared Files" section.
@@ -54,6 +56,8 @@ When WebRTC P2P connection fails after 3 retries (common on VPS deployments wher
 ## Gotchas
 
 - `onDataMessage` in `usePeerConnection.js` passes `(event.data, nextChannel)`; both args are required.
+- `text-share` messages are intercepted in `usePeerConnections.js` and delivered via the `onTextReceived` callback — they are NOT forwarded to `onDataMessage`.
+- The text input textarea is an `INPUT`/`TEXTAREA` element, so the global Ctrl+V paste handler skips it. Ctrl+Enter / Cmd+Enter sends the text.
 - Transfers are enabled only when the DataChannel `readyState` is `open`; a paired peer can still show `Connecting` until WebRTC finishes.
 - `crypto.randomUUID()` does not work over plain HTTP on non-localhost; use `generateId()`.
 - Server CORS allows all origins when no `CLIENT_ORIGIN` env is set.

@@ -6,6 +6,7 @@ Browser-based local file transfer using WebRTC DataChannels. The signaling serve
 
 - **Auto-Announce & Auto-Pairing**: Displays nearby LAN devices with random usernames/device names and establishes WebRTC connections automatically without room codes or manual clicking to connect.
 - **Drag-and-Drop & Clipboard Paste**: Drop files onto the page (full-screen overlay with bounce animation) or paste via Ctrl+V / Cmd+V anywhere. Click the drop zone to open the file picker. Directories are filtered; clipboard images are auto-named.
+- **Text Sharing**: Send copied or typed text to connected devices via a built-in textarea. Texts arrive instantly with sender name, timestamp, and a one-click Copy button.
 - **Auto-Send**: Files are sent immediately when added if a peer connection is open — no Send button. Cancel anytime from the progress card.
 - **Offline File Staging**: Stage files before a peer connection exists. Once connected, staged files are broadcast as a catalog to all peers.
 - **Decentralized LAN Shared Catalog**: Broadcasts staged and completed files to a local network library. Users can browse and request files shared by other connected devices.

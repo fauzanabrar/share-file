@@ -5,11 +5,13 @@ React + Vite app for automatic multi-peer LAN auto-pairing, decentralized file c
 The interface is streamlined into a single-column Transfer panel that displays:
 - Active LAN device status badges and their live WebRTC states.
 - **Clickable drop zone** that opens the file picker, supports drag-and-drop (full-screen overlay), and clipboard paste (Ctrl+V / Cmd+V).
+- **Share Text** textarea to type or paste text and send it to all connected peers (Ctrl+Enter / Cmd+Enter to send).
 - **Auto-send** — files are sent immediately when added if peers are connected. No Send button needed.
 - Upload progress card with speed, byte counts, and inline cancel (X) button.
 - Interrupted transfers with options to Resume or Dismiss.
 - **Your Shared Files** section showing files the sender has staged in their catalog.
 - Centered, backdrop-blurred modal prompts for accepting incoming pushed transfers.
+- **Received Texts** section showing text messages from peers with one-click Copy and Dismiss buttons.
 - **Files Available on LAN** catalog list with one-click direct download actions.
 - **Completed Downloads** list with status indicators.
 

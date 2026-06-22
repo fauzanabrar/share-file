@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, FileCheck, Send, Square, RotateCcw, Keyboard, X } from "lucide-react";
+import { Download, FileCheck, Send, Square, RotateCcw, Keyboard, X, Clipboard, Copy, Check, Trash2 } from "lucide-react";
 import {
   sendFile,
   createFileId,
@@ -15,12 +15,16 @@ export function FileTransferPanel({
   downloads,
   networkFiles,
   sharedFiles,
+  receivedTexts,
   onRequestFile,
   onShareFile,
+  onShareText,
   onAcceptIncoming,
   onRejectIncoming,
   onClearDownload,
   onClearAllDownloads,
+  onClearReceivedText,
+  onClearAllReceivedTexts,
   availablePeers,
 }) {
   const fileInputRef = useRef(null);
@@ -32,6 +36,9 @@ export function FileTransferPanel({
   const [resumeId, setResumeId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
+  const [textDraft, setTextDraft] = useState("");
+  const [copiedId, setCopiedId] = useState(null);
+  const textAreaRef = useRef(null);
 
   const openChannels = getOpenChannels();
   const channelReady = openChannels.length > 0;
@@ -245,6 +252,35 @@ export function FileTransferPanel({
     addFiles(files);
     event.target.value = "";
   };
+
+  // ── Text sharing ───────────────────────────────────────────────
+  const handleSendText = useCallback(() => {
+    const text = textDraft.trim();
+    if (!text) return;
+    const ok = onShareText?.(text);
+    if (ok) {
+      setTextDraft("");
+    } else {
+      setError("No connected devices to send text to.");
+    }
+  }, [textDraft, onShareText]);
+
+  const handleTextKeyDown = useCallback((e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSendText();
+    }
+  }, [handleSendText]);
+
+  const handleCopyText = useCallback(async (textItem) => {
+    try {
+      await navigator.clipboard.writeText(textItem.text);
+      setCopiedId(textItem.id);
+      window.setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      // Fallback: select text for manual copy
+    }
+  }, []);
 
   // ── Drag and drop ──────────────────────────────────────────────
   const handleDragEnter = useCallback((e) => {
@@ -492,6 +528,46 @@ export function FileTransferPanel({
         style={{ display: "none" }}
       />
 
+      {/* ── Share Text Section ─────────────────────────────────── */}
+      <div className="text-share-section">
+        <div className="text-share-header">
+          <Clipboard size={15} aria-hidden="true" />
+          <span className="text-share-title">Share Text</span>
+          <span className="text-share-hint">Paste or type text to send to connected devices</span>
+        </div>
+        <div className="text-share-input-row">
+          <textarea
+            ref={textAreaRef}
+            className="text-share-input"
+            placeholder="Type or paste text here..."
+            value={textDraft}
+            onChange={(e) => setTextDraft(e.target.value)}
+            onKeyDown={handleTextKeyDown}
+            rows={3}
+            disabled={Boolean(sending)}
+          />
+          <button
+            className="button text-share-send-btn"
+            type="button"
+            onClick={handleSendText}
+            disabled={!textDraft.trim() || !channelReady || Boolean(sending)}
+            title={channelReady ? "Send text (Ctrl+Enter)" : "Connect to a device first"}
+          >
+            <Send size={15} aria-hidden="true" />
+            Send
+          </button>
+        </div>
+        {channelReady ? (
+          <p className="text-share-shortcut-hint">
+            Press <kbd>{(navigator.userAgent?.includes("Mac") || navigator.platform?.includes("Mac")) ? "\u2318" : "Ctrl"}</kbd>+<kbd>Enter</kbd> to send
+          </p>
+        ) : (
+          <p className="text-share-shortcut-hint">
+            Text will be sent once devices connect.
+          </p>
+        )}
+      </div>
+
       {sending ? (
         <TransferProgress
           label={sending.name}
@@ -541,6 +617,55 @@ export function FileTransferPanel({
                     {formatBytes(file.size)} • shared by you
                   </span>
                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Received Texts Section ──────────────────────────────── */}
+      {receivedTexts && receivedTexts.length > 0 && (
+        <div className="received-texts-stack">
+          <div className="download-stack-header">
+            <h3>Received Texts</h3>
+            <div className="button-row">
+              <button
+                className="button secondary"
+                type="button"
+                onClick={onClearAllReceivedTexts}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+                Clear All
+              </button>
+            </div>
+          </div>
+          {receivedTexts.map((textItem) => (
+            <div className="received-text-card" key={textItem.id}>
+              <div className="received-text-meta">
+                <span className="received-text-sender">{textItem.senderName}</span>
+                <span className="received-text-time">{formatTime(textItem.timestamp)}</span>
+              </div>
+              <pre className="received-text-body">{textItem.text}</pre>
+              <div className="button-row">
+                <button
+                  className="button secondary copy-text-btn"
+                  type="button"
+                  onClick={() => handleCopyText(textItem)}
+                >
+                  {copiedId === textItem.id ? (
+                    <><Check size={15} aria-hidden="true" /> Copied</>
+                  ) : (
+                    <><Copy size={15} aria-hidden="true" /> Copy</>
+                  )}
+                </button>
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() => onClearReceivedText?.(textItem.id)}
+                >
+                  <X size={15} aria-hidden="true" />
+                  Dismiss
+                </button>
               </div>
             </div>
           ))}
@@ -755,4 +880,12 @@ function formatBytes(value) {
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   const amount = value / 1024 ** index;
   return `${amount.toFixed(amount >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  return `${h}:${m}`;
 }

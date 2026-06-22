@@ -19,6 +19,7 @@ When multiple users on the same LAN discover each other, they announce their pre
 - Once a DataChannel state transitions to `"open"`, the hook automatically broadcasts the local list of shared files to the peer.
 - The hook listens for catalog updates (`{ type: "catalog-share" }`) and updates `networkFiles` state to compile a local directory of all files available on the LAN.
 - The hook handles `{ type: "file-request" }` messages by automatically triggering `sendFile` to stream the requested file to the peer.
+- The hook intercepts `{ type: "text-share" }` messages and delivers them via the `onTextReceived` callback without forwarding to `onDataMessage`.
 - Received channel messages are forwarded to the transfer module via the `onDataMessage` callback, which accepts the message payload, active data channel, and the sender's `peerId`.
 
 ## Peer Disconnect & Link Cleanup

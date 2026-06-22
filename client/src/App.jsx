@@ -13,6 +13,7 @@ export function App() {
   const [availablePeers, setAvailablePeers] = useState([]);
   const [peerError, setPeerError] = useState("");
   const [sharedFiles, setSharedFiles] = useState(new Map());
+  const [receivedTexts, setReceivedTexts] = useState([]);
   const [showTip, setShowTip] = useState(() => localStorage.getItem("sharefile:hide-tip") !== "true");
 
   const dismissTip = useCallback(() => {
@@ -71,6 +72,10 @@ export function App() {
     cancelTransfersForPeer(peerId);
   }, [cancelTransfersForPeer]);
 
+  const handleTextReceived = useCallback((textMessage) => {
+    setReceivedTexts((prev) => [textMessage, ...prev]);
+  }, []);
+
   const { channelStates, getOpenChannels, getIsRelay, networkFiles, requestFile } = usePeerConnections({
     socket,
     selfPeer,
@@ -79,7 +84,34 @@ export function App() {
     onDataMessage: handleDataMessage,
     onEvent: handlePeerEvent,
     onPeerDisconnect: handlePeerDisconnect,
+    onTextReceived: handleTextReceived,
   });
+
+  const shareText = useCallback((text) => {
+    const channels = getOpenChannels();
+    if (channels.length === 0) return false;
+    const id = `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const msg = JSON.stringify({
+      type: "text-share",
+      id,
+      text,
+      timestamp: Date.now(),
+    });
+    channels.forEach(({ record }) => {
+      try {
+        record.channel.send(msg);
+      } catch {}
+    });
+    return true;
+  }, [getOpenChannels]);
+
+  const clearReceivedText = useCallback((id) => {
+    setReceivedTexts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const clearAllReceivedTexts = useCallback(() => {
+    setReceivedTexts([]);
+  }, []);
 
   const handleRequestFile = useCallback(
     async (fileId, ownerId, meta) => {
@@ -204,12 +236,16 @@ export function App() {
             downloads={downloads}
             networkFiles={networkFiles}
             sharedFiles={sharedFiles}
+            receivedTexts={receivedTexts}
             onRequestFile={handleRequestFile}
             onShareFile={shareFile}
+            onShareText={shareText}
             onAcceptIncoming={acceptIncoming}
             onRejectIncoming={rejectIncoming}
             onClearDownload={clearDownload}
             onClearAllDownloads={clearAllDownloads}
+            onClearReceivedText={clearReceivedText}
+            onClearAllReceivedTexts={clearAllReceivedTexts}
             availablePeers={availablePeers}
           />
         </div>

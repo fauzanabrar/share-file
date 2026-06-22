@@ -66,7 +66,7 @@ server/                  Express + ws signaling server
 
 - **Chunk size**: 256KB, kept under common WebRTC SCTP message limits.
 - **File ID**: deterministic `${name}-${size}-${lastModified}`.
-- **Control messages**: `file-meta`, `file-done`, `file-cancel`, `file-resume`.
+- **Control messages**: `file-meta`, `file-done`, `file-cancel`, `file-resume`, `text-share`.
 - **Data**: raw `ArrayBuffer` chunks over the same ordered DataChannel.
 - **Backpressure**: waits only when `bufferedAmount > 64MB`, using `bufferedamountlow` plus a 10ms poll fallback.
 - **Resume timeout**: 30s timeout on `waitForResumeOffset`; aborts if receiver never replies.
@@ -100,6 +100,7 @@ The sender saves `{ name, size, mimeType, lastSentOffset }` to `localStorage` ev
 - **Drag-and-drop**: full-screen overlay with bounce animation when files are dragged over the page. Directories are filtered out. `dragend` listener prevents stuck overlay state.
 - **Clipboard paste**: Ctrl+V / Cmd+V anywhere on the page (excluding input/textarea). Clipboard images get auto-generated names. Platform detection uses `navigator.userAgent` (not deprecated `navigator.platform`).
 - **Auto-send**: files are sent immediately when added if a DataChannel is open. There is no Send button. The Cancel button (X) is embedded in the progress card.
+- **Text sharing**: textarea to type or paste text and send it to all connected peers via the `text-share` control message. Ctrl+Enter / Cmd+Enter sends. Received texts show in a "Received Texts" section with one-click Copy and Dismiss buttons.
 
 ### LAN Access
 

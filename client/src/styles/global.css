@@ -848,3 +848,148 @@ input[type="file"] {
     opacity: 1;
   }
 }
+
+/* ── Text sharing section ─────────────────────────────────────── */
+.text-share-section {
+  margin-top: 4px;
+  margin-bottom: 20px;
+  padding: 14px 14px 12px;
+  background: #f8faf7;
+  border: 1px solid #d9e0d7;
+  border-radius: 8px;
+}
+
+.text-share-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.text-share-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #17201b;
+}
+
+.text-share-hint {
+  font-size: 0.78rem;
+  color: #647268;
+}
+
+.text-share-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.text-share-input {
+  flex: 1;
+  min-height: 72px;
+  max-height: 160px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.88rem;
+  color: #17201b;
+  background: #ffffff;
+  border: 1px solid #cbd5ca;
+  border-radius: 8px;
+  resize: vertical;
+  line-height: 1.5;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.text-share-input:focus {
+  outline: none;
+  border-color: #8aab96;
+  box-shadow: 0 0 0 3px rgba(22, 131, 79, 0.10);
+}
+
+.text-share-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.text-share-send-btn {
+  align-self: flex-end;
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+}
+
+.text-share-shortcut-hint {
+  margin: 8px 0 0;
+  font-size: 0.76rem;
+  color: #8a9b8f;
+}
+
+.text-share-shortcut-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #4c5a50;
+  background: #edf2ea;
+  border: 1px solid #d2ddce;
+  border-radius: 4px;
+}
+
+/* ── Received texts section ───────────────────────────────────── */
+.received-texts-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px dashed #d9e0d7;
+}
+
+.received-text-card {
+  padding: 12px 14px;
+  background: #fcfdfe;
+  border: 1px solid #d0e1fd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 98, 255, 0.03);
+}
+
+.received-text-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.received-text-sender {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #0062ff;
+}
+
+.received-text-time {
+  font-size: 0.76rem;
+  color: #8a9b8f;
+  font-weight: 500;
+}
+
+.received-text-body {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e4e9e1;
+  border-radius: 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.84rem;
+  color: #17201b;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.copy-text-btn {
+  gap: 6px;
+}
