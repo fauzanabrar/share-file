@@ -15,6 +15,8 @@ The interface is streamlined into a single-column Transfer panel that displays:
 - **Files Available on LAN** catalog list with one-click direct download actions.
 - **Completed Downloads** list with status indicators.
 
+The app is installable as a **Progressive Web App** (PWA) in Chrome and Edge, configured via `vite-plugin-pwa` in `vite.config.js`. It includes a web manifest with standard and maskable icons, a Workbox-generated service worker with auto-update, and Apple PWA meta tags in `index.html`.
+
 Feature modules live in `src/modules/`. Each module owns its UI, hooks, and local summaries.
 
 ## Runtime Flow
